@@ -1,0 +1,163 @@
+# =============================================================================
+# Credit risk ECL engine — configuration
+# =============================================================================
+# Every assumption, threshold and modelling choice lives here rather than in
+# code, so it can be read and challenged by someone who does not open a .py
+# file. That matters more in this project than in most: under IFRS 9 these are
+# not implementation details, they are ACCOUNTING POLICY. The staging rules
+# below decide how much provision a bank holds, and an auditor is entitled to
+# read them.
+#
+# Two rules this portfolio learned the hard way:
+#   1. Thresholds are set BEFORE results are known. A limit that moves to
+#      accommodate an outcome was never a limit.
+#   2. No measured figure is recorded in a comment. Comments say how to measure;
+#      a command produces the number. (A sister project published figures typed
+#      into a comment that turned out to be wrong by a factor of three.)
+# =============================================================================
+
+seed: 42                       # every random draw in this project derives from this
+
+# --- Paths -------------------------------------------------------------------
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  sample_path: data/sample/sample_book.duckdb   # bundled, committed, tiny
+  database: data/processed/ecl.duckdb           # the working warehouse
+
+# --- The portfolio being modelled --------------------------------------------
+# Unsecured personal loans: fixed term, monthly instalments, no collateral.
+# Chosen deliberately. With no collateral there is no valuation to model, so
+# LGD stays simple and the IFRS 9 mechanics — staging, PD term structure,
+# discounting — stay in focus. It is also where most South African retail
+# credit risk teams begin.
+portfolio:
+  product: unsecured_personal_loan
+  currency: ZAR
+  n_accounts: 20000
+  origination_start: "2021-01-31"
+  origination_end: "2024-12-31"
+  reporting_date: "2025-12-31"      # the date the ECL is struck at
+
+  # Loan terms, drawn per account from these ranges.
+  principal_min: 5000
+  principal_max: 150000
+  term_months_choices: [12, 24, 36, 48, 60]
+  nominal_annual_rate_min: 0.155    # the effective interest rate used to discount
+  nominal_annual_rate_max: 0.275
+
+  # Segments. Each gets its own delinquency behaviour (see `generator` below),
+  # which is what makes segmentation worth doing at all.
+  # Risk multipliers scale how often an account falls behind. They are
+  # deliberately narrow: the multiplier compounds across four arrears buckets,
+  # so a 2x multiplier becomes a ~40x difference in default rate, which no real
+  # book shows. Calibrated to a ~7x prime-to-subprime spread.
+  segments:
+    prime:      {share: 0.45, risk_multiplier: 0.75}
+    near_prime: {share: 0.35, risk_multiplier: 1.00}
+    subprime:   {share: 0.20, risk_multiplier: 1.55}
+
+# --- The synthetic book's data-generating process ----------------------------
+# The book is SIMULATED, and every file that reports a number from it says so.
+# The reason to simulate rather than find real data is positive, not a
+# compromise: the deliverable here is the CORRECTNESS OF A CALCULATION, and a
+# book whose true PD, EAD and LGD are known by construction lets the engine's
+# output be checked against an analytically derived answer. You cannot do that
+# with a real book, because nobody knows its true PD.
+#
+# Delinquency is a Markov chain over buckets. The monthly transition matrix is
+# the ground truth: 12-month and lifetime PD follow from its powers exactly, so
+# the engine's empirical estimates have something to converge TO.
+generator:
+  # Buckets: 0 = current, 1 = 1-29 DPD, 2 = 30-59, 3 = 60-89, 4 = 90+ (default)
+  # 90+ is absorbing. That is the IFRS 9 / Basel default definition this project
+  # uses, and it is stated here rather than assumed in code.
+  default_bucket: 4
+  #
+  # CALIBRATION TARGET (not a measured result — rerun to reproduce):
+  # these rates were chosen so the generated book lands near a realistic South
+  # African unsecured personal loan portfolio — roughly 5% 12-month PD and 25%
+  # over a 36-month life, with prime around 2%, near-prime 4-5% and subprime
+  # 13-14%. `python scripts/generate_book.py --summary` prints what they
+  # actually produce.
+  base_transitions:
+    # From bucket 0 (current)
+    miss_from_current: 0.105       # 0 -> 1
+    # From bucket 1 (1-29 DPD)
+    cure_from_1: 0.620             # 1 -> 0
+    worsen_from_1: 0.180           # 1 -> 2
+    # From bucket 2 (30-59 DPD)
+    cure_from_2: 0.280             # 2 -> 1
+    worsen_from_2: 0.350           # 2 -> 3
+    # From bucket 3 (60-89 DPD)
+    cure_from_3: 0.120             # 3 -> 2
+    worsen_from_3: 0.520           # 3 -> 4  (default)
+
+  # Seasoning: default risk peaks part-way through a loan's life rather than at
+  # origination. Multiplies the miss and worsen rates.
+  seasoning_peak_month: 14
+  seasoning_strength: 0.55
+
+  # Does a borrower's riskiness affect how well they RECOVER once behind?
+  # Modelled as no: the multiplier scales the rate of falling behind, while
+  # cure rates are shared. It is a simplification, stated here rather than
+  # buried, and the alternative (scaling cures too) compounds into segment
+  # differences no real book displays.
+  risk_multiplier_affects_cure: false
+
+  # Loss given default, per account, Beta-distributed around this mean.
+  # Unsecured recoveries are poor; 65% loss is a conventional working figure.
+  lgd_mean: 0.65
+  lgd_concentration: 12.0          # Beta concentration: higher = tighter spread
+
+# --- IFRS 9 staging ----------------------------------------------------------
+# THE accounting judgement in this project. Stage 1 carries a 12-month ECL;
+# Stage 2 and 3 carry LIFETIME ECL, so the staging rule can move the provision
+# by multiples. Every rule below is a policy choice an auditor would ask about.
+staging:
+  # Stage 3: credit-impaired. 90+ days past due.
+  default_dpd: 90
+
+  # Stage 2: significant increase in credit risk since origination (SICR).
+  # Three triggers, any of which is sufficient — the standard permits a mix of
+  # quantitative and backstop criteria.
+  sicr_dpd_backstop: 30            # IFRS 9's rebuttable 30-day presumption
+  sicr_relative_pd_increase: 2.0   # lifetime PD at least 2x its value at origination
+  sicr_absolute_pd_floor: 0.05     # ...but only once lifetime PD exceeds 5%,
+                                   # so a move from 0.1% to 0.3% is not an alarm
+
+  # Curing: how long an account must behave before it returns to Stage 1.
+  # Without a probation period accounts oscillate between stages every month,
+  # which produces provision volatility that is an artefact of the rule.
+  probation_months: 3
+
+# --- ECL calculation ---------------------------------------------------------
+ecl:
+  horizon_months_stage_1: 12
+  discount: effective_interest_rate   # IFRS 9 requires discounting at the EIR
+  # Expected lifetime for a fixed-term loan is its remaining contractual term.
+  # (For revolving products this is the hard question; it is not one here, which
+  # is part of why a term product was chosen.)
+  lifetime: remaining_contractual_term
+
+# --- Validation thresholds ---------------------------------------------------
+# Set before any result is known. These are the checks the engine must pass for
+# its output to be reported at all.
+validation:
+  # The engine's empirical 12-month PD must land near the analytic truth.
+  max_pd_absolute_error: 0.010        # 1 percentage point
+  # Total ECL must reconcile to the analytic figure within this relative gap.
+  max_ecl_relative_error: 0.02        # 2%
+  # Every account must be in exactly one stage, and balances must tie out.
+  require_exact_stage_partition: true
+  max_balance_reconciliation_error: 0.01   # currency units, per account
+
+# --- The SAS parallel implementation -----------------------------------------
+# Phase 8 reimplements the engine in SAS PROC SQL and reconciles it against the
+# DuckDB reference. Champion/challenger reconciliation is what a model
+# validation function does, and it is the only way SAS code written without a
+# SAS licence to hand can be shown to be correct.
+reconciliation:
+  max_absolute_difference: 0.01       # currency units, per account
+  max_relative_difference: 0.0001     # 1 basis point on portfolio totals
+  export_dir: data/processed/reconciliation

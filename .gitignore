@@ -1,0 +1,55 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Test cache ---
+.pytest_cache/
+.coverage
+
+# --- Environment / secrets ---
+.env
+*.local
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+
+# --- Data (keep the folders, ignore the contents) -----------------------------
+# Generated books and intermediate tables are reproducible from a seed, so they
+# are not version-controlled. data/sample/ IS committed: a fresh clone must be
+# able to run something.
+#
+# NOTE the shape of these rules. An earlier project in this portfolio wrote
+# `data/*` here, which silently swallowed its own committed sample and made a
+# fresh clone crash. Ignore the two generated directories by name, nothing more.
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# --- DuckDB ---
+# Ignore the WORKING warehouse by path, not every .duckdb file by extension.
+# A blanket `*.duckdb` rule would also exclude data/sample/sample_book.duckdb,
+# which is committed on purpose so a fresh clone can run immediately. That is
+# precisely the mistake a sister project made with `data/*`, and it was found
+# only when a clean clone crashed.
+data/processed/*.duckdb
+data/processed/*.duckdb.wal
+*.duckdb.wal
+
+# --- SAS ---
+*.sas7bdat
+*.log
+*.lst
