@@ -4,16 +4,17 @@
 > session. Read this plus `docs/ROADMAP.md` and you know exactly where the
 > project stands. Newest entry at the top.
 
-**Current phase:** Phase 0 complete. Next: Phase 1 — the data mart.
-**Overall status:** 🟢 Scaffolding, config, synthetic book with an analytic
-answer key, DuckDB warehouse and CI all in place. **24 tests green.**
+**Current phase:** Phase 1 complete. Next: Phase 2 — delinquency and roll rates.
+**Overall status:** 🟢 Book, answer key, warehouse, CI, and a data mart with a
+documented grain that passes eight quality checks — each of which has been
+demonstrated to fail when the mart is broken. **39 tests green.**
 **Cadence:** one commit per working day.
 
 ---
 
 ## Phase checklist
 - [x] Phase 0 — Scaffolding, config, synthetic book + answer key, warehouse, CI
-- [ ] Phase 1 — Data mart
+- [x] Phase 1 — Data mart
 - [ ] Phase 2 — Delinquency and roll rates
 - [ ] Phase 3 — IFRS 9 staging
 - [ ] Phase 4 — PD term structure
@@ -36,7 +37,7 @@ answer key, DuckDB warehouse and CI all in place. **24 tests green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 24 tests
+pytest                                    # 39 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -47,6 +48,71 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-10-26 — Phase 1: the data mart
+Dimensions, a fact table with a grain stated in one sentence, and eight quality
+checks written as SQL.
+
+- **`sql/01_dim_date.sql`** — calendar at month-end grain, built from month
+  starts and `last_day()` so it cannot drift. Carries `month_index`
+  (`year*12 + month`) so every span in months is a subtraction.
+- **`sql/02_dim_account.sql`** — one row per loan, type 1, with vintage keys and
+  reporting bands defined once so two reports cannot band differently.
+- **`sql/03_fact_loan_month.sql`** — **one row per account per calendar month
+  end on which the account was on book.** A periodic snapshot, not a
+  transaction fact, so a missing month is a defect rather than an absence of
+  events.
+- **`sql/04_mart_quality.sql`** — eight checks returning failure counts.
+- **`src/mart.py`** — orchestration and reporting only; the modelling is SQL.
+- `run_pipeline.py` now builds the mart and **stops** if any check fails.
+
+Full book: 20,000 accounts, **506,213 fact rows**, all eight checks pass. At the
+reporting date: 8,568 accounts on book, 136.8m exposure, 5.4% 30+ DPD, correctly
+ordered by segment (prime 3.8% / near-prime 5.5% / subprime 10.6%).
+
+#### The test that makes the checks worth having
+Not that they pass — `test_every_quality_check_can_actually_fail` builds eight
+separate marts, breaks each in exactly the way one check exists to catch
+(duplicating rows, deleting a dimension row, removing a month, multiplying a
+balance by ten), and asserts the matching check notices.
+
+**A check with a typo in its predicate passes on every book ever written.** It
+is indistinguishable from one that works until the day it was needed. The only
+way to tell them apart is to break the data on purpose. Same argument as the
+football project's simulation study: a control never observed to fire is not
+yet evidence of anything.
+
+#### Additivity, written down before it bites
+`scheduled_balance` is **semi-additive** — summable across accounts at a point
+in time, meaningless summed across months. `is_default` counts the same default
+every month it persists; `is_new_default` (a `LAG` window) fires once. Both
+pinned by tests, both in column comments, because a semi-additive measure summed
+the wrong way produces a confident catastrophic number.
+
+#### A small-sample inversion worth noting
+On the 400-account sample, prime showed a *higher* 30+ DPD rate than near-prime
+— which would be alarming if it were real. On the full 20,000-account book the
+ordering is correct. Worth remembering before reading anything into a segment
+cut of the sample.
+
+#### A test that failed for the wrong reason
+Running the Phase 0 suite from an unzipped folder before `git init` reported
+*"the working warehouse should not be version-controlled — it is"*. It wasn't.
+`git check-ignore` exits **128** outside a work tree, and the test treated
+anything non-zero as "not ignored", so the absence of a repository was reported
+as a `.gitignore` defect.
+
+Now asks `git rev-parse --is-inside-work-tree` first and skips with an
+explanation. **A check that cannot distinguish "the answer is no" from "I could
+not determine the answer" will eventually report the second as the first** —
+the same shape as the football optimiser returning `success: True` while failing
+to converge.
+
+#### Next
+Phase 2 — delinquency and roll rates: bucket transition matrices from the fact
+table's own history, which is the empirical counterpart to the generator's
+known transition matrix.
+
 
 ### 2026-10-23 — Phase 0: the answer key comes first
 Scaffolding, configuration, the synthetic book, and the analytic truth that

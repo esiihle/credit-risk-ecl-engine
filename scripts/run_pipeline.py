@@ -10,6 +10,7 @@ being silently skipped: a pipeline that quietly does less than it claims is how
 a half-built system gets reported as finished.
 """
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import load_config, set_seed
-from src import db
+from src import db, mart
 
 # The build plan, in order. Each entry is (phase, name, what it produces).
 # This list is the roadmap in executable form, and `--status` prints it.
@@ -54,7 +55,23 @@ def main():
         print()
         return 0
 
-    target = (REPO_ROOT / config["data"]["sample_path"]) if args.sample else None
+    if args.sample:
+        # Work on a COPY. The committed sample is a version-controlled file, and
+        # building the mart into it would leave the repository dirty after
+        # every run — and eventually someone commits the derived tables, which
+        # then go stale against the SQL that produced them.
+        source = REPO_ROOT / config["data"]["sample_path"]
+        if not source.exists():
+            print(f"\n  No sample book at {source}")
+            print("  Rebuild it: python scripts/generate_book.py --sample\n")
+            return 1
+        target = REPO_ROOT / config["data"]["processed_dir"] / "sample_run.duckdb"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(source, target)
+        print(f"\n  working on a copy of the sample at "
+              f"{target.relative_to(REPO_ROOT)}")
+    else:
+        target = None
 
     print(f"\nECL engine — {config['portfolio']['product']}, "
           f"reporting date {config['portfolio']['reporting_date']}")
@@ -72,15 +89,45 @@ def main():
     print(db.describe(connection))
     connection.close()
 
+    # --- Phase 1: the data mart ------------------------------------------
+    # Reopened for writing: the mart is built here, not read.
+    print()
+    print("Stage 1 — Data mart")
+    connection = db.connect(config, target)
+    try:
+        mart.build(connection, config)
+    except Exception as error:
+        print(f"  CANNOT BUILD THE MART: {error}")
+        connection.close()
+        return 1
+
+    print()
+    checks = mart.quality_report(connection)
+    print(mart.format_quality(checks))
+
+    if not checks["passed"].all():
+        # Stopping here is the point. A mart that fails its own checks produces
+        # numbers that look exactly like good ones, and every later stage would
+        # inherit the defect while reporting confidently.
+        print()
+        print("  STOPPING. Later stages are not run against a mart that failed")
+        print("  its own quality checks.")
+        connection.close()
+        return 1
+
+    print(mart.mart_report(connection, config))
+    connection.close()
+
     print()
     print("Stages")
     print("-" * 6)
-    built = {"Data mart": False}          # updated as phases land
+    built = {"Data mart": True}           # updated as phases land
     for phase, name, produces in STAGES:
         status = "built" if built.get(name) else "NOT YET BUILT"
         print(f"  Phase {phase} — {name:<28} {status}")
     print()
-    print("Phase 0 complete: config, warehouse and a book with a known answer key.")
+    print("Phase 1 complete: a mart with a documented grain that passes its")
+    print("own quality checks.")
     print()
     return 0
 

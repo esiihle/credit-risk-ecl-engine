@@ -51,10 +51,11 @@ them is wrong — and that is a finding, not a mystery.
 
 Every table and report says the book is synthetic.
 
-## Current state — Phase 0 complete
+## Current state — Phase 1 complete
 
 Scaffolding, configuration, the synthetic book with its analytic answer key, the
-DuckDB warehouse, and CI. **24 tests pass.**
+DuckDB warehouse, CI, and a **data mart** with a documented grain that passes
+eight quality checks. **39 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -62,7 +63,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 24 tests
+pytest                                   # 39 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -76,8 +77,8 @@ anything.
 | Phase | What | |
 |---|---|---|
 | **0** | Scaffolding, config, synthetic book + answer key, warehouse, CI | **done** |
-| 1 | Data mart: `dim_account`, `dim_date`, `fact_loan_month` | next |
-| 2 | Delinquency buckets and roll rates | |
+| **1** | Data mart: `dim_account`, `dim_date`, `fact_loan_month` | **done** |
+| 2 | Delinquency buckets and roll rates | next |
 | 3 | IFRS 9 staging — the SICR rules | |
 | 4 | PD term structure, 12-month vs lifetime | |
 | 5 | LGD and EAD | |
@@ -107,7 +108,8 @@ config.yaml     every threshold and accounting policy choice, in one readable pl
 src/            config, generate (the book + its answer key), db (DuckDB harness)
 sql/            the engine's logic, as SQL — readable, reviewable, portable
 scripts/        generate_book.py · run_pipeline.py
-tests/          24 tests; the answer key is checked against the simulation
+tests/          39 tests; the answer key is checked against the simulation,
+                and every mart quality check is shown to fail when it should
 docs/           OVERVIEW · ROADMAP · methodology
 data/sample/    a small committed book so a clone runs out of the box
 .github/        CI: the suite plus a pipeline run, on Python 3.11 and 3.12

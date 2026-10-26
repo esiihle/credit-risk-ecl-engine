@@ -126,10 +126,30 @@ def test_git_ignores_the_working_data_but_not_the_committed_sample():
     """
     import subprocess
 
+    # `git check-ignore` exits 128 outside a work tree, which is neither
+    # "ignored" nor "not ignored". Treating 128 as "not ignored" is how the
+    # first version of this test failed confusingly for anyone running pytest
+    # from an unzipped folder before `git init` — the test reported that the
+    # working warehouse was version-controlled, which was not the problem.
+    inside_repo = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=REPO_ROOT, capture_output=True)
+    if inside_repo.returncode != 0:
+        pytest.skip(
+            "not inside a git work tree, so there is nothing for git to "
+            "ignore. This is expected when running from an unzipped folder "
+            "before `git init`."
+        )
+
     def ignored(path):
         result = subprocess.run(
             ["git", "check-ignore", "-q", str(path)],
             cwd=REPO_ROOT, capture_output=True)
+        if result.returncode not in (0, 1):
+            pytest.fail(
+                f"git check-ignore failed unexpectedly on {path}: "
+                f"{result.stderr.decode().strip()}"
+            )
         return result.returncode == 0
 
     config = load_config()
@@ -145,3 +165,44 @@ def test_git_ignores_the_working_data_but_not_the_committed_sample():
     )
     assert ignored(Path("data/raw/anything.csv"))
     assert ignored(Path("data/processed/anything.parquet"))
+
+
+def test_running_the_pipeline_does_not_modify_the_committed_sample():
+    """`--sample` must work on a copy.
+
+    The sample book is version-controlled. Building the mart into it would
+    leave the repository dirty after every run, and eventually someone commits
+    the derived tables — which then go stale against the SQL that produced
+    them, with nothing to say so.
+    """
+    import re
+    source = (REPO_ROOT / "scripts" / "run_pipeline.py").read_text()
+
+    assert "shutil.copy" in source, (
+        "run_pipeline.py --sample should copy the sample before building"
+    )
+    # And the copy must land outside data/sample/.
+    assert re.search(r'processed_dir.*sample_run', source, re.S), (
+        "the working copy should go into data/processed/, not beside the "
+        "committed sample"
+    )
+
+
+def test_the_committed_sample_holds_source_tables_only():
+    """Derived tables are rebuilt, never shipped.
+
+    A committed mart would be a second source of truth that no command
+    regenerates — the exact failure mode this portfolio has already had with
+    numbers typed into comments.
+    """
+    config = load_config()
+    sample = REPO_ROOT / config["data"]["sample_path"]
+    connection = db.connect(config, sample, read_only=True)
+    present = set(db.table_names(connection))
+    connection.close()
+
+    assert present == set(db.CORE_TABLES), (
+        f"the sample should hold exactly {sorted(db.CORE_TABLES)}, found "
+        f"{sorted(present)}. Rebuild with "
+        "`python scripts/generate_book.py --sample`"
+    )
