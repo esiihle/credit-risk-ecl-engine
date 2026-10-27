@@ -301,3 +301,126 @@ in the football project, where an optimiser returned `success: True` while
 failing to converge, and in the scorecard, where perfect separation showed up as
 a huge standard error rather than an error. In each case the system had a way to
 say "I don't know" and used a confident value instead.
+
+
+---
+
+## 3. Delinquency transitions and roll rates  *(built 27 Oct 2026)*
+
+The first phase in which the engine **estimates** something. Everything before
+was plumbing; from here each number has a true value behind it.
+
+### 3.1 What a roll rate is
+
+The probability that an account in one arrears bucket is in another a month
+later. Collected across all buckets it is a transition matrix, and it is the
+most-used artefact in retail credit MI: it drives the PD term structure in
+Phase 4, it is the first place a deteriorating book shows up, and it is what a
+collections team is managed against.
+
+### 3.2 The censoring trap
+
+The obvious implementation takes `LEAD(arrears_bucket)` and calls it the
+destination. That mishandles the last row of every account — and the last row
+of every account is never a random sample:
+
+* accounts that **defaulted** end on their default row. The move *into* default
+  is observed from the row before; there is no move out, because default is
+  absorbing.
+* accounts still on book at the reporting date are **right-censored**. Their
+  next month exists in reality; we have not seen it.
+* accounts that **matured** simply stop.
+
+`LEAD` returns NULL in all three cases. The damage is done not by the NULL but
+by the denominator: computing a rate as *moves to j ÷ rows in bucket i* counts
+every account's final month as an opportunity that produced no move, which
+reads as "stayed".
+
+So a transition exists only where the next month is actually observed. Rows
+without one are excluded, never defaulted to anything.
+
+**The bias is directional and worst where it matters.** Measured on this book:
+
+| roll-forward | correct | naive | understated by |
+|---|---|---|---|
+| current → 1-29 | 8.47% | 8.20% | 3.2% |
+| 1-29 → 30-59 | 16.36% | 15.75% | 3.7% |
+| 30-59 → 60-89 | 33.93% | 32.60% | 3.9% |
+| **60-89 → 90+** | **50.59%** | **48.62%** | **3.9%** |
+
+The understatement grows as the buckets deepen, because accounts in deep
+arrears are the most likely to be in their final observed month — they are
+about to default, and the series ends. A provision built on the naive matrix
+would be systematically light, and light in exactly the segment that drives it.
+
+`test_exactly_one_transition_is_lost_per_account` pins the arithmetic:
+transitions must equal fact rows minus accounts, exactly.
+`test_the_naive_denominator_is_biased_downward` asserts the wrong
+implementation really is wrong, and by a material amount — a suite that only
+ever confirms the right answer gives a reader no reason to think the right
+answer was hard to get.
+
+### 3.3 The estimate meets the answer key
+
+| transition | observed | truth | gap (SEs) |
+|---|---|---|---|
+| current → 1-29 | 8.47% | 8.54% | −1.5 |
+| 1-29 → current | 62.35% | 62.00% | +1.6 |
+| 1-29 → 30-59 | 16.36% | 16.45% | −0.5 |
+| 30-59 → 60-89 | 33.93% | 33.91% | +0.0 |
+| 60-89 → 90+ | 50.59% | 51.67% | −1.8 |
+
+Every cell within **1.8 standard errors**. The estimate is counted from half a
+million observed account-months; the truth is the matrix those months were
+drawn from. Two unrelated routes, so agreement is evidence rather than
+restatement.
+
+### 3.4 Why the comparison is not against the config base rates
+
+This is the subtle part, and getting it wrong would have looked like an
+estimation bug.
+
+The true matrix varies by **segment** (riskier borrowers miss more often) and
+by **month on book** (seasoning). So no single true matrix exists for a pooled
+estimate to be compared against. What the pooled estimate estimates is the
+**exposure-weighted average** of the true matrices, with the weights the data
+actually carries — which is what `expected_pooled_matrix` computes, by looking
+up the true matrix for every observed opportunity and averaging.
+
+Comparing the pooled estimate against the base rates in `config.yaml` instead
+would show a gap of several percentage points. The base rates are what a
+near-prime account at the seasoning peak experiences; the book averages
+something else. The discrepancy would be real, and it would be a bug **in the
+comparison, not in the estimate** — the worst kind, because it sends you
+looking in the wrong file.
+
+`test_comparing_against_config_base_rates_would_be_wrong` asserts the two
+genuinely differ, so the weighting is doing work rather than being ceremony.
+
+An aside worth keeping: the **cure** rates come out almost exactly on their
+base values — 62.35% against a base 62.0%, 27.85% against 28.0%, 12.23% against
+12.0% — while the **worsen** rates sit visibly below theirs. That is not a
+coincidence, it is §1.6 showing through: the risk multiplier scales worsening
+and leaves curing alone. The data reproduces a modelling decision made three
+weeks earlier, which is as good a check on both as exists.
+
+### 3.5 The cuts
+
+`roll_rate_segmented` holds the same matrix by segment, by month-on-book band
+and by calendar quarter, in one long table keyed on `cut_type` / `cut_value`.
+Adding a fourth cut later adds rows, not a schema change.
+
+**By segment** — roll-to-default runs prime 33.9% < near-prime 46.5% <
+subprime 73.8%. If the grading did not order these, the segmentation would be
+decorative.
+
+**By age** — the miss rate humps: 6.7% in the first six months, peaking at 9.8%
+around 12–23 months, falling to 6.4% beyond three years. Exactly the seasoning
+curve the generator was given, recovered from the data.
+
+**By quarter** — the stability view, and the one a monitoring pack leads with.
+Roll rates drifting quarter on quarter is the earliest visible sign a book is
+changing, and it appears well before the default rate moves.
+
+Every row carries its `opportunities` count, because a rate computed on nine
+accounts will swing wildly and look like a trend.

@@ -51,11 +51,12 @@ them is wrong — and that is a finding, not a mystery.
 
 Every table and report says the book is synthetic.
 
-## Current state — Phase 1 complete
+## Current state — Phase 2 complete
 
-Scaffolding, configuration, the synthetic book with its analytic answer key, the
-DuckDB warehouse, CI, and a **data mart** with a documented grain that passes
-eight quality checks. **39 tests pass.**
+Book, answer key, warehouse, CI, a data mart with a documented grain, and a
+**transition matrix estimated from 486,213 observed moves** — reconciled against
+the matrix the book was generated from, every cell within 1.8 standard errors.
+**51 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -63,7 +64,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 39 tests
+pytest                                   # 51 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -78,8 +79,8 @@ anything.
 |---|---|---|
 | **0** | Scaffolding, config, synthetic book + answer key, warehouse, CI | **done** |
 | **1** | Data mart: `dim_account`, `dim_date`, `fact_loan_month` | **done** |
-| 2 | Delinquency buckets and roll rates | next |
-| 3 | IFRS 9 staging — the SICR rules | |
+| **2** | Delinquency buckets and roll rates | **done** |
+| 3 | IFRS 9 staging — the SICR rules | next |
 | 4 | PD term structure, 12-month vs lifetime | |
 | 5 | LGD and EAD | |
 | 6 | ECL calculation and discounting at the EIR | |
@@ -108,7 +109,7 @@ config.yaml     every threshold and accounting policy choice, in one readable pl
 src/            config, generate (the book + its answer key), db (DuckDB harness)
 sql/            the engine's logic, as SQL — readable, reviewable, portable
 scripts/        generate_book.py · run_pipeline.py
-tests/          39 tests; the answer key is checked against the simulation,
+tests/          51 tests; the answer key is checked against the simulation,
                 and every mart quality check is shown to fail when it should
 docs/           OVERVIEW · ROADMAP · methodology
 data/sample/    a small committed book so a clone runs out of the box

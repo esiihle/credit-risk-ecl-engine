@@ -4,10 +4,10 @@
 > session. Read this plus `docs/ROADMAP.md` and you know exactly where the
 > project stands. Newest entry at the top.
 
-**Current phase:** Phase 1 complete. Next: Phase 2 — delinquency and roll rates.
-**Overall status:** 🟢 Book, answer key, warehouse, CI, and a data mart with a
-documented grain that passes eight quality checks — each of which has been
-demonstrated to fail when the mart is broken. **39 tests green.**
+**Current phase:** Phase 2 complete. Next: Phase 3 — IFRS 9 staging.
+**Overall status:** 🟢 Mart built and quality-checked; the transition matrix is
+now **estimated from observed moves and reconciled against the matrix the book
+was generated from — every cell within 1.8 standard errors.** **51 tests green.**
 **Cadence:** one commit per working day.
 
 ---
@@ -15,7 +15,7 @@ demonstrated to fail when the mart is broken. **39 tests green.**
 ## Phase checklist
 - [x] Phase 0 — Scaffolding, config, synthetic book + answer key, warehouse, CI
 - [x] Phase 1 — Data mart
-- [ ] Phase 2 — Delinquency and roll rates
+- [x] Phase 2 — Delinquency and roll rates
 - [ ] Phase 3 — IFRS 9 staging
 - [ ] Phase 4 — PD term structure
 - [ ] Phase 5 — LGD and EAD
@@ -37,7 +37,7 @@ demonstrated to fail when the mart is broken. **39 tests green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 39 tests
+pytest                                    # 51 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -48,6 +48,75 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-10-27 — Phase 2: roll rates, and the first estimate that meets the answer key
+Three SQL files, a validation module, and the first number in this project that
+had to be *estimated* rather than computed.
+
+- **`sql/05_bucket_transitions.sql`** — one row per observed month-to-month
+  move, via `LEAD` over an account timeline.
+- **`sql/06_roll_rates.sql`** — the pooled transition matrix, account-weighted
+  and balance-weighted.
+- **`sql/07_roll_rate_segmented.sql`** — the same matrix by segment, by
+  months-on-book band and by calendar quarter, in one long table keyed on
+  `cut_type` / `cut_value`.
+- **`src/rollrate.py`** — the matrix pivot, the comparison against truth, and
+  the censoring-bias quantification.
+
+#### The estimate reproduces the generator's matrix
+| transition | observed | truth | gap |
+|---|---|---|---|
+| current → 1-29 | 8.47% | 8.54% | −1.5 SE |
+| 1-29 → current | 62.35% | 62.00% | +1.6 SE |
+| 30-59 → 60-89 | 33.93% | 33.91% | +0.0 SE |
+| 60-89 → 90+ | 50.59% | 51.67% | −1.8 SE |
+
+Every cell within **1.8 standard errors**, counted from 486,213 observed moves
+against the matrix those moves were drawn from.
+
+#### The censoring trap, quantified
+`LEAD` returns NULL for every account's last month, and the last month is never
+a random sample — defaults end there, and so do censored and matured accounts.
+Computing a rate as *moves ÷ rows in bucket* counts those as opportunities that
+produced no move, which reads as "stayed".
+
+| roll-forward | correct | naive | understated |
+|---|---|---|---|
+| current → 1-29 | 8.47% | 8.20% | 3.2% |
+| 60-89 → 90+ | 50.59% | 48.62% | **3.9%** |
+
+**The bias grows as the buckets deepen**, because accounts in deep arrears are
+most likely to be in their final observed month — they are about to default and
+the series ends. A provision on the naive matrix would be light, and light in
+exactly the segment that drives it.
+
+`test_exactly_one_transition_is_lost_per_account` pins the arithmetic exactly:
+transitions = fact rows − accounts.
+
+#### Why the comparison is not against the config base rates
+The true matrix varies by segment and by age, so no single true matrix exists
+for a pooled estimate to meet. The pooled estimate estimates the
+**exposure-weighted average** of the true matrices — which is what
+`expected_pooled_matrix` computes. Comparing against the base rates instead
+would show a multi-point gap that looks like an estimation bug but is **a bug
+in the comparison**, which is worse: it sends you looking in the wrong file.
+
+A nice confirmation fell out of it. The **cure** rates land almost exactly on
+their base values (62.35 vs 62.0, 27.85 vs 28.0, 12.23 vs 12.0) while the
+**worsen** rates sit visibly below theirs — because the risk multiplier scales
+worsening and leaves curing alone. The data reproduced a modelling decision made
+on 23 October.
+
+#### The cuts say what they should
+- segment: roll-to-default orders prime 33.9% < near-prime 46.5% < subprime 73.8%
+- age: the miss rate humps at 9.8% around 12–23 months, the seasoning curve
+  recovered from data
+- quarter: the stability view a monitoring pack leads with
+
+#### Next
+Phase 3 — IFRS 9 staging. The SICR rules, where the accounting judgement lives
+and where the provision moves by multiples rather than percentages.
+
 
 ### 2026-10-26 — Phase 1: the data mart
 Dimensions, a fact table with a grain stated in one sentence, and eight quality

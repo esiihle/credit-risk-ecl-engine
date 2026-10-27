@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import load_config, set_seed
-from src import db, mart
+from src import db, mart, rollrate
 
 # The build plan, in order. Each entry is (phase, name, what it produces).
 # This list is the roadmap in executable form, and `--status` prints it.
@@ -116,18 +116,31 @@ def main():
         return 1
 
     print(mart.mart_report(connection, config))
+
+    # --- Phase 2: delinquency transitions and roll rates ------------------
+    print()
+    print("Stage 2 — Delinquency and roll rates")
+    try:
+        rollrate.build(connection)
+    except Exception as error:
+        print(f"  CANNOT BUILD TRANSITIONS: {error}")
+        connection.close()
+        return 1
+
+    print()
+    print(rollrate.rollrate_report(connection, config))
     connection.close()
 
     print()
     print("Stages")
     print("-" * 6)
-    built = {"Data mart": True}           # updated as phases land
+    built = {"Data mart": True, "Delinquency & roll rates": True}
     for phase, name, produces in STAGES:
         status = "built" if built.get(name) else "NOT YET BUILT"
         print(f"  Phase {phase} — {name:<28} {status}")
     print()
-    print("Phase 1 complete: a mart with a documented grain that passes its")
-    print("own quality checks.")
+    print("Phase 2 complete: a transition matrix estimated from observed moves,")
+    print("reconciled against the matrix the book was generated from.")
     print()
     return 0
 
