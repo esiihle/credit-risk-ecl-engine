@@ -4,10 +4,10 @@
 > session. Read this plus `docs/ROADMAP.md` and you know exactly where the
 > project stands. Newest entry at the top.
 
-**Current phase:** Phase 2 complete. Next: Phase 3 — IFRS 9 staging.
-**Overall status:** 🟢 Mart built and quality-checked; the transition matrix is
-now **estimated from observed moves and reconciled against the matrix the book
-was generated from — every cell within 1.8 standard errors.** **51 tests green.**
+**Current phase:** Phase 3 complete. Next: Phase 4 — PD term structure.
+**Overall status:** 🟢 Mart, roll rates, and now **IFRS 9 staging** — a PD curve
+built as a recursive CTE, SICR triggers with probation, and every account staged
+with its reason recorded. **66 tests green.**
 **Cadence:** one commit per working day.
 
 ---
@@ -16,7 +16,7 @@ was generated from — every cell within 1.8 standard errors.** **51 tests green
 - [x] Phase 0 — Scaffolding, config, synthetic book + answer key, warehouse, CI
 - [x] Phase 1 — Data mart
 - [x] Phase 2 — Delinquency and roll rates
-- [ ] Phase 3 — IFRS 9 staging
+- [x] Phase 3 — IFRS 9 staging
 - [ ] Phase 4 — PD term structure
 - [ ] Phase 5 — LGD and EAD
 - [ ] Phase 6 — ECL calculation
@@ -37,7 +37,7 @@ was generated from — every cell within 1.8 standard errors.** **51 tests green
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 51 tests
+pytest                                    # 66 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -48,6 +48,64 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-10-29 — Phase 3: IFRS 9 staging, and a trigger that barely fires
+The accounting judgement phase. Three SQL files and the finding that staging —
+not the PD model — is what moves a provision.
+
+- **`sql/08_pd_curve.sql`** — matrix exponentiation as a **recursive CTE**. The
+  state vector carried as five columns, multiplied by the Phase 2 matrix each
+  step; the mass in bucket 4 after k steps is P(default within k months).
+- **`sql/09_staging.sql`** — Stage 3 at 90+ DPD; Stage 2 on the 30-day
+  backstop, the relative PD test, or probation. Every account carries a
+  `stage_reason`.
+- **`sql/10_stage_migration.sql`** — month-on-month stage movement, account- and
+  balance-weighted.
+- **`src/staging.py`** — orchestration, validation, and the trigger analysis.
+
+Book at the reporting date: **92.3% Stage 1 / 7.0% Stage 2 / 0.7% Stage 3** by
+exposure. All four staging checks pass.
+
+#### Two traps in the recursive CTE, both silent
+**DECIMAL truncation.** `1.0 AS p0` is `DECIMAL(2,1)` — one decimal place — and
+the type propagates through every iteration. The state vector froze at
+(0.9, 0.1) forever and produced perfectly valid-looking probabilities that were
+completely wrong. No error. Every literal in the anchor now carries `::DOUBLE`,
+and a regression test asserts the untyped version really does freeze, so the
+casts cannot be tidied away as noise.
+
+**The absorbing row is absent from the data.** Nothing is ever *observed*
+leaving default, so pivoting `roll_rate` gives NULL for the whole bucket-4 row
+including its diagonal. Coalescing to zero makes probability mass vanish and the
+PD curve plateau — which looks reasonable. The identity row is a modelling fact,
+not a data fact, and has to be asserted.
+
+#### The finding: the relative PD test is nearly redundant
+Counting account-months where each trigger was *the* reason:
+
+| trigger | account-months |
+|---|---|
+| 30-day backstop | 23,737 |
+| relative PD test | **1,132** |
+
+And **every one of the 1,132 is a 12-month loan** — none on 24, 36, 48 or 60.
+
+Structural: a relative test needs a small denominator, and lifetime PD at
+origination grows with the term (5.9% over 12 months, 38% over 60). The same
+proportional deterioration clears a doubling on a short loan and cannot come
+close on a long one. Meanwhile PD is monotone in the arrears bucket, so by the
+time PD has doubled the account is usually already 30 days down.
+
+**A SICR test built only on arrears can never be genuinely forward-looking,
+because arrears are the thing it is supposed to anticipate.** A real
+implementation uses a driver independent of arrears — behavioural score, bureau
+refresh, macro overlay. This book has none, and saying so is more useful than
+reporting a staging split that looks fine.
+
+#### Next
+Phase 4 — the PD term structure: 12-month versus lifetime, segmented and
+seasoned, validated against the analytic truth rather than against itself.
+
 
 ### 2026-10-27 — Phase 2: roll rates, and the first estimate that meets the answer key
 Three SQL files, a validation module, and the first number in this project that

@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import load_config, set_seed
-from src import db, mart, rollrate
+from src import db, mart, rollrate, staging
 
 # The build plan, in order. Each entry is (phase, name, what it produces).
 # This list is the roadmap in executable form, and `--status` prints it.
@@ -129,18 +129,42 @@ def main():
 
     print()
     print(rollrate.rollrate_report(connection, config))
+
+    # --- Phase 3: IFRS 9 staging ------------------------------------------
+    print()
+    print("Stage 3 — IFRS 9 staging")
+    try:
+        staging.build(connection, config)
+    except Exception as error:
+        print(f"  CANNOT ASSIGN STAGES: {error}")
+        connection.close()
+        return 1
+
+    checks = staging.validate(connection, config)
+    if not checks["passed"].all():
+        print()
+        print(staging.staging_report(connection, config))
+        print()
+        print("  STOPPING. Staging failed its own checks, and every provision")
+        print("  below depends on it.")
+        connection.close()
+        return 1
+
+    print()
+    print(staging.staging_report(connection, config))
     connection.close()
 
     print()
     print("Stages")
     print("-" * 6)
-    built = {"Data mart": True, "Delinquency & roll rates": True}
+    built = {"Data mart": True, "Delinquency & roll rates": True,
+             "IFRS 9 staging": True}
     for phase, name, produces in STAGES:
         status = "built" if built.get(name) else "NOT YET BUILT"
         print(f"  Phase {phase} — {name:<28} {status}")
     print()
-    print("Phase 2 complete: a transition matrix estimated from observed moves,")
-    print("reconciled against the matrix the book was generated from.")
+    print("Phase 3 complete: every account staged, with the trigger that put")
+    print("it there recorded by name.")
     print()
     return 0
 

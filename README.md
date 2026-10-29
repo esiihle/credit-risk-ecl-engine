@@ -51,12 +51,12 @@ them is wrong — and that is a finding, not a mystery.
 
 Every table and report says the book is synthetic.
 
-## Current state — Phase 2 complete
+## Current state — Phase 3 complete
 
-Book, answer key, warehouse, CI, a data mart with a documented grain, and a
-**transition matrix estimated from 486,213 observed moves** — reconciled against
-the matrix the book was generated from, every cell within 1.8 standard errors.
-**51 tests pass.**
+Book, answer key, warehouse, CI, a data mart, a transition matrix reconciled
+against the one the book was generated from, and **IFRS 9 staging** — a PD curve
+built as a recursive CTE, SICR triggers with probation, every account staged
+with its reason recorded. **66 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -64,7 +64,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 51 tests
+pytest                                   # 66 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -80,8 +80,8 @@ anything.
 | **0** | Scaffolding, config, synthetic book + answer key, warehouse, CI | **done** |
 | **1** | Data mart: `dim_account`, `dim_date`, `fact_loan_month` | **done** |
 | **2** | Delinquency buckets and roll rates | **done** |
-| 3 | IFRS 9 staging — the SICR rules | next |
-| 4 | PD term structure, 12-month vs lifetime | |
+| **3** | IFRS 9 staging — the SICR rules | **done** |
+| 4 | PD term structure, 12-month vs lifetime | next |
 | 5 | LGD and EAD | |
 | 6 | ECL calculation and discounting at the EIR | |
 | 7 | Vintage curves and portfolio MI | |
@@ -109,7 +109,7 @@ config.yaml     every threshold and accounting policy choice, in one readable pl
 src/            config, generate (the book + its answer key), db (DuckDB harness)
 sql/            the engine's logic, as SQL — readable, reviewable, portable
 scripts/        generate_book.py · run_pipeline.py
-tests/          51 tests; the answer key is checked against the simulation,
+tests/          66 tests; the answer key is checked against the simulation,
                 and every mart quality check is shown to fail when it should
 docs/           OVERVIEW · ROADMAP · methodology
 data/sample/    a small committed book so a clone runs out of the box

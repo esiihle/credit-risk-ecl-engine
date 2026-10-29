@@ -424,3 +424,175 @@ changing, and it appears well before the default rate moves.
 
 Every row carries its `opportunities` count, because a rate computed on nine
 accounts will swing wildly and look like a trend.
+
+
+---
+
+## 4. IFRS 9 staging  *(built 29 Oct 2026)*
+
+The accounting judgement of the project.
+
+| stage | meaning | loss horizon |
+|---|---|---|
+| 1 | performing | **12 months** |
+| 2 | significant increase in credit risk | **lifetime** |
+| 3 | credit-impaired | **lifetime** |
+
+The jump from Stage 1 to Stage 2 replaces a twelve-month horizon with the
+remaining life of the loan. On a 48-month loan that can multiply the provision
+several times over for an account whose circumstances have barely changed.
+**Staging moves the provision more than the PD model does**, which is why every
+rule lives in `config.yaml` and every trigger is recorded by name against the
+account it staged.
+
+### 4.1 A PD curve as a recursive CTE
+
+Staging needs a lifetime PD, and Phase 2 produced a transition matrix. The
+bridge is matrix exponentiation: propagate a state vector forward month by
+month, and the mass accumulated in the default bucket after *k* steps is
+exactly P(default within *k* months).
+
+`sql/08_pd_curve.sql` does this in SQL with a recursive CTE — the state vector
+carried as five columns, multiplied by the matrix at each step. It is the
+empirical counterpart of `generate.cumulative_pd_curve`, which does the same
+thing in Python from the matrix the book was generated from, and
+`test_the_sql_curve_matches_a_python_matrix_power` holds the two together.
+
+**Two traps, both of which produce plausible numbers rather than errors.**
+
+#### Trap 1 — DECIMAL truncation in the anchor
+
+Writing `1.0 AS p0` gives `DECIMAL(2,1)`. One decimal place. The type
+propagates through every iteration, so each step rounds to a tenth and the
+state vector freezes:
+
+| horizon | `1.0 AS p0` | `1.0::DOUBLE AS p0` |
+|---|---|---|
+| 0 | 1.0 | 1.0 |
+| 1 | 0.9 | 0.9 |
+| 2 | **0.9** | 0.87 |
+| 3 | **0.9** | 0.861 |
+| 4 | **0.9** | 0.8583 |
+
+No error. No warning. A column of entirely valid-looking probabilities that is
+completely wrong — and had this gone unnoticed, every lifetime PD in the
+project would have been built on a frozen vector, and the provision with it.
+
+Hence `::DOUBLE` on every literal in the anchor.
+`test_decimal_truncation_in_the_anchor_would_break_the_curve` asserts the
+untyped version really does freeze, so the casts cannot be tidied away by
+someone who takes them for noise.
+
+#### Trap 2 — the absorbing row is absent from the data
+
+`roll_rate` is built from *observed* transitions, and nothing is ever observed
+leaving default. Pivoting it therefore yields NULL for the entire bucket-4 row,
+including its diagonal.
+
+Coalescing those NULLs to zero — the obvious default — means an account that
+defaults is multiplied by a row of zeros at the next step and **its probability
+mass vanishes**. Cumulative PD would stop rising, and a PD curve that plateaus
+looks reasonable enough to ship.
+
+The absorbing row has to be supplied as the identity row. That is a *modelling*
+fact, not a data fact, which is precisely why it must be written down rather
+than inferred from a table that cannot contain it.
+`test_probability_is_conserved_at_every_horizon` checks the total stays at 1.0.
+
+### 4.2 The triggers
+
+**Stage 3** — `days_past_due >= 90`. The Basel/IFRS 9 default definition,
+stated in config rather than assumed in code.
+
+**Stage 2** — three ways in, any one sufficient:
+
+1. **The 30-day backstop.** IFRS 9 carries a rebuttable presumption that credit
+   risk has increased significantly once an account is 30 days past due. It is
+   a *backstop*: waiting for arrears defeats the purpose of a forward-looking
+   standard.
+2. **The relative PD test** — lifetime PD now against lifetime PD at
+   origination. Relative, not absolute, because a move from 2% to 6% is a
+   tripling for a prime borrower while 6% is unremarkable for a subprime one.
+   An absolute threshold would stage most of the subprime book on day one and
+   never catch a deteriorating prime account.
+3. **...subject to an absolute floor.** Without it, 0.1% to 0.3% trips the
+   doubling test and a very safe portfolio migrates on noise. The floor says a
+   relative increase only counts once the level is material.
+
+Both sides of the relative test are computed from the **same** curve. Comparing
+today's curve against a PD stored at origination by last year's model would
+measure model change, not credit deterioration — a distinction that has caused
+real restatements.
+
+### 4.3 Probation
+
+An account that stops triggering does not return to Stage 1 immediately; it
+must behave for `staging.probation_months` first.
+
+Without it, an account hovering around 30 days past due oscillates between
+Stage 1 and Stage 2 every month, and the provision swings by the whole
+difference between a twelve-month and a lifetime loss each time. That
+volatility is an artefact of the rule rather than a change in credit risk, and
+it is impossible to explain to an audit committee because there is nothing to
+explain.
+
+Implemented as a rolling `MAX` over a bounded window frame — the entire
+probation rule is one window function.
+
+### 4.4 The finding: which trigger actually does the work
+
+A trigger that never fires on its own is not a control, it is a line in a
+policy document. Counting the account-months where each trigger fired **and no
+stronger trigger already had**:
+
+| trigger | account-months where it was the reason |
+|---|---|
+| 30-day backstop | 23,737 |
+| relative PD test | **1,132** |
+
+And every one of those 1,132 is a **12-month loan**. Not one on 24, 36, 48 or
+60 months.
+
+**The reason is structural.** A relative test needs a small denominator.
+Lifetime PD at origination grows with the term — 5.9% over 12 months, 38% over
+60 — so the same proportional deterioration clears a doubling on a short loan
+and cannot come close on a long one. Meanwhile PD is a monotone function of the
+arrears bucket, so by the time an account's PD has doubled it is usually
+already 30 days down and caught by the backstop anyway.
+
+The consequence is worth stating plainly: **as configured, the relative PD test
+is nearly redundant.** It contributes 4.5% as many Stage 2 months as the
+backstop, concentrated entirely at the short end of the book.
+
+What a real implementation does about this is use a risk driver that is *not*
+a function of arrears — a refreshed behavioural score, a bureau pull, a
+macroeconomic overlay. A SICR test built only on arrears data can never be
+genuinely forward-looking, because arrears are the thing it is supposed to
+anticipate. This book has no such variable, and saying so is more useful than
+quietly reporting a staging split that looks fine.
+
+`test_the_relative_pd_trigger_binds_only_on_short_dated_loans` pins the finding,
+so a future change that makes the trigger fire across all terms is noticed
+rather than absorbed.
+
+### 4.5 Where the book sits
+
+| stage | accounts | exposure | share |
+|---|---|---|---|
+| 1 | 7,907 | 126,289,603 | 92.3% |
+| 2 | 598 | 9,572,408 | 7.0% |
+| 3 | 63 | 939,053 | 0.7% |
+
+Month-on-month migration, account-weighted:
+
+| | to Stage 1 | to Stage 2 | to Stage 3 |
+|---|---|---|---|
+| from Stage 1 | 98.31% | 1.69% | 0.00% |
+| from Stage 2 | 9.92% | 79.54% | 10.54% |
+| from Stage 3 | — | — | — |
+
+Stage 2 is a genuine waypoint rather than a ratchet: roughly one in ten cures
+back to Stage 1 each month and roughly one in ten deteriorates into Stage 3.
+The Stage 3 row is empty because default is absorbing in this model, so no
+Stage 3 account has a next month — the same reason the 90+ row of the
+transition matrix is empty, and not missing data in either case.
