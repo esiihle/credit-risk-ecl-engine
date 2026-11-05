@@ -4,10 +4,10 @@
 > session. Read this plus `docs/ROADMAP.md` and you know exactly where the
 > project stands. Newest entry at the top.
 
-**Current phase:** Phase 3 complete. Next: Phase 4 — PD term structure.
-**Overall status:** 🟢 Mart, roll rates, and now **IFRS 9 staging** — a PD curve
-built as a recursive CTE, SICR triggers with probation, and every account staged
-with its reason recorded. **66 tests green.**
+**Current phase:** Phase 4 complete. Next: Phase 5 — LGD and EAD.
+**Overall status:** 🟢 Mart, roll rates, staging, and now a **PD term structure
+that is 9x more accurate per account than a pooled curve** — validated against
+a per-account answer key. **78 tests green.**
 **Cadence:** one commit per working day.
 
 ---
@@ -17,7 +17,7 @@ with its reason recorded. **66 tests green.**
 - [x] Phase 1 — Data mart
 - [x] Phase 2 — Delinquency and roll rates
 - [x] Phase 3 — IFRS 9 staging
-- [ ] Phase 4 — PD term structure
+- [x] Phase 4 — PD term structure
 - [ ] Phase 5 — LGD and EAD
 - [ ] Phase 6 — ECL calculation
 - [ ] Phase 7 — Vintage and portfolio MI
@@ -37,7 +37,7 @@ with its reason recorded. **66 tests green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 66 tests
+pytest                                    # 78 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -48,6 +48,70 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-10-31 — Phase 4: the PD term structure, and a broken answer key
+Three SQL files, a validation module, and the first phase that had to prove a
+refinement was *worth making* rather than merely correct.
+
+- **`sql/11_segment_age_matrix.sql`** — transition matrices by segment AND age
+  band jointly, with a thin-cell fallback.
+- **`sql/12_pd_term_structure.sql`** — the age-aware recursive walk. The matrix
+  **changes as the walk advances**, because an account 10 months old today
+  faces the 12-23 month hazard a year from now. A matrix power cannot express
+  that.
+- **`sql/13_account_pd.sql`** — 12-month and lifetime PD per account, by all
+  three methods side by side.
+- **`src/pd.py`** — accuracy against the key, error decomposition, validation.
+
+#### The result
+12-month PD, 8,256 accounts:
+
+| method | mean est | truth | bias | mean abs err | corr |
+|---|---|---|---|---|---|
+| pooled | 8.81% | 7.79% | +13.1% | 0.0359 | 0.944 |
+| segmented | 7.09% | 7.79% | −9.0% | 0.0165 | 0.987 |
+| **age_aware** | **7.75%** | 7.79% | **−0.5%** | **0.0039** | **0.999** |
+
+**9.2x more accurate per account than pooled** (9.5x on lifetime).
+
+#### Why an aggregate check would have missed it
+Pooled errors by grade: prime **+3.61pp**, near-prime +1.06pp, subprime
+**−8.14pp**. Opposite signs, so they partly cancel: the aggregate bias is
++1.0pp while the per-account error is 3.6pp. **A provision is built account by
+account, not from the headline.**
+
+By age the error tracks the seasoning curve rather than scattering around zero
+— a method blind to age must overstate where the hazard is low and understate
+where it peaks.
+
+#### The bug: the answer key was only valid for performing accounts
+All three methods came out ~2x the truth. The engine was right; the key was
+wrong. `ground_truth` computed every account's PD as though it were performing
+— so an account 60-89 days down appeared at 5.4% against a real 84%.
+Restricted to genuinely current accounts, age_aware gave 3.611% against a true
+3.648%.
+
+**An answer key valid for only part of the book is worse than none, because the
+part it is invalid for is exactly where the numbers are largest.** It now uses
+each account's actual bucket at the reporting date.
+
+#### A threshold that was mis-specified — changed, on the record
+The lifetime check failed at 0.0131 against the absolute 0.010 on an 8k book
+while passing at 0.0076 on 20k. Measured across sizes, lifetime absolute error
+runs ~2x the 12-month error every time, while relative errors are comparable —
+because a 60-month cumulative is the accumulation of 60 estimates, so its scale
+grows with the horizon.
+
+The lifetime limit is now **relative** (15%); the 12-month absolute limit is
+untouched. This project's rule is that a limit which moves to accommodate a
+result was never a limit, so both halves are recorded: **the form changed for a
+structural reason, and it changed after a result was seen.** The reason sits in
+`config.yaml` next to the number.
+
+#### Next
+Phase 5 — LGD and EAD. Exposure is already exact arithmetic; loss given default
+is the one genuinely uncertain input, and the one with the least data behind it.
+
 
 ### 2026-10-29 — Phase 3: IFRS 9 staging, and a trigger that barely fires
 The accounting judgement phase. Three SQL files and the finding that staging —

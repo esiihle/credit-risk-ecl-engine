@@ -442,18 +442,46 @@ def simulate_performance(accounts, config, rng):
     return frame
 
 
-def ground_truth(accounts, config):
+def ground_truth(accounts, config, performance=None):
     """The answer key: true PD, EAD and ECL per account at the reporting date.
 
     Computed analytically from the transition matrix and the amortisation
     schedule — never from the simulated paths. That independence is what makes
     it a check rather than a restatement: if the engine and this function agree,
     two different routes reached the same number.
+
+    THE STARTING BUCKET MATTERS, and the first version of this function got it
+    wrong. It computed every account's truth as though the account were
+    performing, with a note saying the comparison would be "like-for-like on
+    performing accounts". That was fine until Phase 4 compared PD per account
+    across the whole book, at which point an account 60-89 days past due was
+    recorded in the answer key at 5.4% when its true 12-month PD was 84%.
+
+    The engine looked wrong by a factor of two. It was not: the key was
+    answering a different question. An answer key that is only valid for part
+    of the book is a trap, because the part it is invalid for is exactly the
+    part where the numbers are large.
+
+    `performance` supplies each account's ACTUAL arrears bucket at the
+    reporting date. Passing it is strongly preferred; without it the old
+    performing-only assumption is used and `truth_assumes_performing` is set,
+    so a consumer can tell which kind of key it has.
     """
     reporting_date = pd.Timestamp(config["portfolio"]["reporting_date"])
     horizon_12 = int(config["ecl"]["horizon_months_stage_1"])
-    rows = []
 
+    # The bucket each account was actually in at the reporting date, and
+    # whether it was observed at all. An account that defaulted earlier has no
+    # row there and does not belong in a forward-looking answer key.
+    observed_bucket = {}
+    if performance is not None and len(performance):
+        at_date = performance[
+            pd.to_datetime(performance["reporting_date"]).dt.to_period("M")
+            == reporting_date.to_period("M")
+        ]
+        observed_bucket = dict(zip(at_date["account_id"], at_date["arrears_bucket"]))
+
+    rows = []
     for account in accounts.itertuples(index=False):
         months_on_book = _months_between(account.origination_date, reporting_date)
         if months_on_book < 0 or months_on_book > account.term_months:
@@ -463,11 +491,14 @@ def ground_truth(accounts, config):
         if remaining <= 0:
             continue
 
-        # Truth is computed from the CURRENT bucket, which for this answer key
-        # is taken as performing. The engine must use the observed bucket; the
-        # comparison in tests is like-for-like on performing accounts.
+        if performance is not None:
+            if account.account_id not in observed_bucket:
+                continue                      # not on book at the reporting date
+            start_bucket = int(observed_bucket[account.account_id])
+        else:
+            start_bucket = 0
         # One curve serves both horizons and the marginal schedule.
-        curve = cumulative_pd_curve(account.true_risk_multiplier, 0,
+        curve = cumulative_pd_curve(account.true_risk_multiplier, start_bucket,
                                     months_on_book, remaining, config)
         pd_12 = float(curve[min(horizon_12, remaining)])
         pd_lifetime = float(curve[-1])
@@ -489,6 +520,8 @@ def ground_truth(accounts, config):
             "account_id": account.account_id,
             "months_on_book": months_on_book,
             "remaining_term": remaining,
+            "true_start_bucket": start_bucket,
+            "truth_assumes_performing": performance is None,
             "true_balance": round(float(balance_at(
                 account.principal, account.annual_rate,
                 account.term_months, months_on_book)), 2),
@@ -515,5 +548,7 @@ def generate_book(config, rng=None):
 
     accounts = build_accounts(config, rng)
     performance = simulate_performance(accounts, config, rng)
-    truth = ground_truth(accounts, config)
+    # The performance frame is passed so the answer key uses each account's
+    # ACTUAL bucket at the reporting date — see `ground_truth`.
+    truth = ground_truth(accounts, config, performance)
     return accounts, performance, truth

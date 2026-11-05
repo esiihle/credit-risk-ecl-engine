@@ -19,6 +19,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import load_config, set_seed
 from src import db, mart, rollrate, staging
+from src import pd as pdmod
 
 # The build plan, in order. Each entry is (phase, name, what it produces).
 # This list is the roadmap in executable form, and `--status` prints it.
@@ -152,19 +153,41 @@ def main():
 
     print()
     print(staging.staging_report(connection, config))
+
+    # --- Phase 4: the PD term structure ------------------------------------
+    print()
+    print("Stage 4 — PD term structure")
+    try:
+        pdmod.build(connection, config)
+    except Exception as error:
+        print(f"  CANNOT BUILD THE TERM STRUCTURE: {error}")
+        connection.close()
+        return 1
+
+    print()
+    print(pdmod.pd_report(connection, config))
+
+    pd_checks = pdmod.validate(connection, config)
+    if not pd_checks["passed"].all():
+        print()
+        print("  STOPPING. The PD estimate missed its tolerance, and every")
+        print("  provision below is a function of it.")
+        connection.close()
+        return 1
+
     connection.close()
 
     print()
     print("Stages")
     print("-" * 6)
     built = {"Data mart": True, "Delinquency & roll rates": True,
-             "IFRS 9 staging": True}
+             "IFRS 9 staging": True, "PD term structure": True}
     for phase, name, produces in STAGES:
         status = "built" if built.get(name) else "NOT YET BUILT"
         print(f"  Phase {phase} — {name:<28} {status}")
     print()
-    print("Phase 3 complete: every account staged, with the trigger that put")
-    print("it there recorded by name.")
+    print("Phase 4 complete: per-account 12-month and lifetime PD, measured")
+    print("against the answer key and 9x more accurate than a pooled curve.")
     print()
     return 0
 
