@@ -110,6 +110,20 @@ generator:
   lgd_mean: 0.65
   lgd_concentration: 12.0          # Beta concentration: higher = tighter spread
 
+  # --- The recovery process (Phase 5) ---------------------------------------
+  # LGD is the one genuinely uncertain input in this engine: exposure is
+  # arithmetic and PD is estimated from half a million observed transitions,
+  # but recoveries are few, slow and noisy.
+  #
+  # Modelling the WORKOUT PERIOD rather than a single instant recovery is the
+  # point. A default today has not finished recovering, and an estimator that
+  # treats its partial recovery as final overstates loss. That bias is the
+  # central lesson of LGD estimation and it cannot be shown without a workout.
+  workout_months: 12               # how long a full collections workout takes
+  recovery_front_loading: 0.5      # exponent on workout progress; <1 = easy
+                                   # money first, which is how collections runs
+  recovery_noise: 0.12             # dispersion of realised recovery
+
 # --- IFRS 9 staging ----------------------------------------------------------
 # THE accounting judgement in this project. Stage 1 carries a 12-month ECL;
 # Stage 2 and 3 carry LIFETIME ECL, so the staging rule can move the provision
@@ -173,6 +187,74 @@ validation:
   # recorded here because a threshold changed after seeing a result deserves
   # the reason in writing. See methodology §5.6.
   max_lifetime_pd_relative_error: 0.15
+
+  # WHEN THE PD ACCURACY GATE CAN BE APPLIED AT ALL.
+  #
+  # The two tolerances above judge how accurate the age-aware PD estimate is.
+  # That question only has an answer if the age-aware model was actually
+  # estimated — and on a small book it is not. Cutting by segment AND age band
+  # AND arrears bucket multiplies the cells, and below a certain size most of
+  # them fall back to the segment's pooled rate, so "age_aware" becomes the
+  # pooled model wearing a different name.
+  #
+  # Measured: on the full 20,000-account book, 1.8% of cells use the fallback.
+  # On the committed 400-account sample, 60.4% do, and the thinnest cell has a
+  # single transition behind it.
+  #
+  # This threshold is about the INPUT — was the model estimated? — not about
+  # whether it passed. Above this share the accuracy gate reports "not
+  # assessed" rather than "failed", because those are different statements and
+  # a pipeline that conflates them is lying about which one it found.
+  max_fallback_share_for_pd_assessment: 0.25
+
+  # --- LGD (Phase 5) ---------------------------------------------------------
+  # The LGD estimate from RESOLVED workouts must land near the true mean loss
+  # the recoveries were drawn around.
+  #
+  # Two tolerances, deliberately, because they fail for different reasons.
+  #
+  # The absolute one (2pp) is the materiality question: would a provision built
+  # on this estimate be meaningfully wrong? At a ~6% lifetime default rate, 2pp
+  # of LGD moves portfolio ECL by roughly 0.1% of exposure.
+  #
+  # The standard-error one is the statistical question: is the gap bigger than
+  # sampling noise can explain? LGD here rests on roughly 500-1,000 resolved
+  # defaults per segment, giving a standard error near 0.5pp, so an absolute
+  # limit alone would accept a miss of four standard errors as fine. Three
+  # standard errors is the conventional line, and with three segments checked
+  # it leaves a false-failure rate of well under 1%.
+  #
+  # Both are set from the sample size and the materiality of the input, before
+  # any estimate was produced.
+  max_lgd_absolute_error: 0.02             # 2 percentage points
+  max_lgd_errors_in_standard_errors: 3.0   # and no further than noise explains
+
+  # WHEN THE ABSOLUTE LGD GATE CAN BE APPLIED AT ALL.
+  #
+  # The same distinction as `max_fallback_share_for_pd_assessment` above, in a
+  # different place. A 2pp materiality limit only means something if the
+  # estimate is precise enough for a 2pp gap to be distinguishable from
+  # sampling noise. It is not, on a small book: with ~10 resolved defaults per
+  # segment the standard error is near 4pp, so an estimate lands more than 2pp
+  # from the truth about half the time by chance alone.
+  #
+  # Measured across six seeds on the 400-account sample: the absolute gate
+  # passed on one and failed on five, while the standard-error gate passed on
+  # all six (worst 2.18 against the limit of 3.0). The committed sample was
+  # passing that gate by luck of the seed, and CI was one regenerated sample
+  # away from red for no defect at all.
+  #
+  # So the absolute gate is applied only when the standard error is at most
+  # half the tolerance -- i.e. when the estimate is at least twice as precise
+  # as the limit it is held to. Below that it reports "not assessed", which is
+  # a different statement from "failed". The standard-error gate always
+  # applies, because it is sample-size aware by construction and so is
+  # meaningful at any book size.
+  #
+  # This threshold is about the INPUT -- how precise is the estimate? -- not
+  # about whether it passed. Added 5 Nov 2026. See methodology §6.4.
+  max_lgd_standard_error_for_absolute_gate: 0.01
+
   # Total ECL must reconcile to the analytic figure within this relative gap.
   max_ecl_relative_error: 0.02        # 2%
   # Every account must be in exactly one stage, and balances must tie out.

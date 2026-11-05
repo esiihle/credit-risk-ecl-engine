@@ -39,7 +39,7 @@ def built(config, tmp_path_factory):
     small["portfolio"] = dict(config["portfolio"], n_accounts=600)
 
     rng = set_seed(4242)
-    accounts, performance, truth = generate.generate_book(small, rng)
+    accounts, performance, truth, recoveries = generate.generate_book(small, rng)
 
     connection = db.connect(small, path)
     db.write_table(connection, "accounts", accounts)
@@ -249,7 +249,7 @@ def test_every_quality_check_can_actually_fail(config, tmp_path):
     def fresh_mart(name):
         path = tmp_path / f"{name}.duckdb"
         rng = set_seed(5)
-        accounts, performance, truth = generate.generate_book(small, rng)
+        accounts, performance, truth, recoveries = generate.generate_book(small, rng)
         connection = db.connect(small, path)
         db.write_table(connection, "accounts", accounts)
         db.write_table(connection, "loan_month", performance)

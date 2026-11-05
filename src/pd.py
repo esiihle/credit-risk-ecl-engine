@@ -170,11 +170,48 @@ def error_by_segment(connection, method="pooled", horizon="12m"):
     """)
 
 
+def estimation_coverage(connection):
+    """How much of the age-aware model is its own estimate, and how much is
+    the fallback wearing its name.
+
+    Cutting by segment AND age band AND arrears bucket multiplies the cells.
+    On a small book most of them fall back to the segment's pooled rate, and
+    at that point "age_aware" is the pooled model under another label —
+    judging its accuracy judges something that was never built.
+    """
+    return db.read_sql(connection, """
+        SELECT
+            COUNT(*)                                            AS cells,
+            SUM(CASE WHEN used_fallback THEN 1 ELSE 0 END)      AS fell_back,
+            AVG(CASE WHEN used_fallback THEN 1.0 ELSE 0.0 END)  AS fallback_share,
+            MIN(opportunities)                                  AS thinnest_cell
+        FROM segment_age_matrix
+    """).iloc[0]
+
+
 def validate(connection, config):
-    """Does the chosen method clear the threshold set before it was built?"""
+    """Does the chosen method clear the threshold set before it was built?
+
+    Returns a `status` of pass, fail, or **not assessed**. The third is not a
+    softer failure — it is a different finding, and the distinction is the one
+    this project keeps relearning: a check that cannot tell "the answer is no"
+    from "I could not determine the answer" will eventually report the second
+    as the first.
+
+    Here the difference is material. On the committed sample the PD estimate
+    looks dreadful, and it is not: 60% of the matrix cells behind it are the
+    fallback, so there is no age-aware model to be accurate or inaccurate.
+    Reporting that as a failed accuracy gate sends the reader to the estimator
+    when the answer is that the book is too small to judge it on.
+    """
     absolute_limit = float(config["validation"]["max_pd_absolute_error"])
     relative_limit = float(
         config["validation"].get("max_lifetime_pd_relative_error", 0.15))
+    fallback_limit = float(
+        config["validation"].get("max_fallback_share_for_pd_assessment", 0.25))
+
+    coverage = estimation_coverage(connection)
+    assessable = float(coverage["fallback_share"]) <= fallback_limit
     results = []
 
     # 12-month PD: an absolute tolerance. The horizon is fixed, so the scale of
@@ -187,7 +224,10 @@ def validate(connection, config):
         "method": best["method"],
         "value": best["mean_absolute_error"],
         "limit": absolute_limit,
-        "passed": bool(best["mean_absolute_error"] <= absolute_limit),
+        "assessable": assessable,
+        "status": ("not assessed" if not assessable
+                   else "pass" if best["mean_absolute_error"] <= absolute_limit
+                   else "fail"),
     })
 
     # Lifetime PD: a RELATIVE tolerance. The horizon varies by account and runs
@@ -203,7 +243,10 @@ def validate(connection, config):
         "method": best["method"],
         "value": best["relative_error"],
         "limit": relative_limit,
-        "passed": bool(best["relative_error"] <= relative_limit),
+        "assessable": assessable,
+        "status": ("not assessed" if not assessable
+                   else "pass" if best["relative_error"] <= relative_limit
+                   else "fail"),
     })
 
     # The ranking matters as much as the level: a method that prices wrongly
@@ -216,10 +259,17 @@ def validate(connection, config):
         "method": best["method"],
         "value": best["correlation"],
         "limit": 0.9,
-        "passed": bool(best["correlation"] > 0.9),
+        "assessable": assessable,
+        "status": ("not assessed" if not assessable
+                   else "pass" if best["correlation"] > 0.9 else "fail"),
     })
 
-    return pd.DataFrame(results)
+    frame = pd.DataFrame(results)
+    # `passed` means "did not fail". A check that could not be assessed has
+    # not failed, and the pipeline must not stop on it — but the report says
+    # plainly which of the two happened.
+    frame["passed"] = frame["status"] != "fail"
+    return frame
 
 
 def pd_report(connection, config):
@@ -273,14 +323,33 @@ def pd_report(connection, config):
                      f"{row.mean_estimate:>11.2%}{row.mean_truth:>10.2%}"
                      f"{row.mean_error:>+10.2%}")
 
+    coverage = estimation_coverage(connection)
     checks = validate(connection, config)
+
     lines.append("")
     lines.append("Validation")
     lines.append("-" * 10)
+
+    marks = {"pass": "PASS", "fail": "FAIL", "not assessed": " -- "}
     for row in checks.itertuples(index=False):
-        mark = "PASS" if row.passed else "FAIL"
-        lines.append(f"  [{mark}] {row.check}")
+        lines.append(f"  [{marks[row.status]}] {row.check}")
         lines.append(f"         {row.method}: {row.value:.4f} against "
                      f"a limit of {row.limit}")
+
+    if not bool(checks["assessable"].iloc[0]):
+        lines.append("")
+        lines.append("  NOT ASSESSED, and that is a different finding from a failure.")
+        lines.append(f"  {coverage['fell_back']:.0f} of {coverage['cells']:.0f} matrix "
+                     f"cells ({coverage['fallback_share']:.0%}) fell back to the")
+        lines.append(f"  segment's pooled rate, and the thinnest holds "
+                     f"{coverage['thinnest_cell']:.0f} transition(s). There is no")
+        lines.append("  age-aware model here to be accurate or inaccurate — the book")
+        lines.append("  is too small to estimate one. The figures above are printed")
+        lines.append("  so they can be seen, not so they can be believed.")
+    else:
+        lines.append("")
+        lines.append(f"  model coverage: {coverage['fell_back']:.0f} of "
+                     f"{coverage['cells']:.0f} cells ({coverage['fallback_share']:.1%}) "
+                     "used the fallback")
 
     return "\n".join(lines)

@@ -47,7 +47,7 @@ def built(config, tmp_path_factory):
     sized["portfolio"] = dict(config["portfolio"], n_accounts=6000)
 
     rng = set_seed(31415)
-    accounts, performance, truth = generate.generate_book(sized, rng)
+    accounts, performance, truth, recoveries = generate.generate_book(sized, rng)
 
     connection = db.connect(sized, path)
     db.write_table(connection, "accounts", accounts)

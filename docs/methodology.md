@@ -752,3 +752,248 @@ never a limit, so the distinction matters and is recorded rather than glossed:
 after a result was seen.** Both halves are true. The 12-month absolute limit is
 untouched, the reason is written in `config.yaml` next to the number, and
 anyone who disagrees can see exactly what was done and when.
+
+---
+
+## 6. Loss given default and exposure at default (Phase 5)
+
+ECL is `PD × LGD × EAD`, discounted. Phase 4 produced the PD. This phase
+produces the other two, and they are not alike at all.
+
+| | EAD | LGD |
+|---|---|---|
+| nature | contractual arithmetic | statistical estimate |
+| source | the amortisation schedule | a few thousand resolved defaults |
+| failure mode available | a transcription error | bias, and sampling noise |
+| tolerance | to the cent | 2pp, and within 3 standard errors |
+
+That asymmetry is the whole content of the phase, and it was arranged in Phase 0
+by choosing an unsecured **term** product. On a term loan the borrower cannot
+increase their exposure: the schedule is fixed and the balance only falls. On a
+credit card or an overdraft, EAD becomes the hard input — it depends on how much
+of an undrawn limit a distressed borrower draws before defaulting, which needs a
+credit conversion factor, which is a second model with its own data problem.
+One genuinely uncertain input is enough to demonstrate the machinery; two would
+obscure which one was driving the error.
+
+### 6.1 Exposure at default
+
+`sql/15_ead_schedule.sql` projects, for every live account and every month to
+maturity, the balance the account would carry if it defaulted then:
+
+```
+i         = (1 + annual_rate)^(1/12) - 1
+balance_t = P × ((1+i)^n - (1+i)^t) / ((1+i)^n - 1)
+```
+
+Written in SQL rather than carried over from the Python generator, so the whole
+exposure calculation is reviewable in one place and ports to SAS in Phase 8.
+It produced **158,696 account-months** on the full book, projected to the
+longest remaining term of 48 months.
+
+The same monthly rate serves twice: it builds the schedule and it discounts the
+loss off it. IFRS 9 requires discounting at the asset's **effective interest
+rate**, so this is a policy choice that looks like an implementation detail —
+using one rate for the schedule and another for the discount would be a
+plausible-looking error with no visible symptom, which is why there is a test
+asserting they are the same rate.
+
+Validation is exact. The SQL and `generate.balance_at` implement the same
+closed-form formula in two languages and share no code, so agreement is
+evidence of correct transcription, and there is no sampling noise in arithmetic
+to excuse a gap:
+
+```
+account-months projected        158,696
+max difference vs formula      0.000000
+rows differing by > 1c                0
+```
+
+Two structural properties are also asserted: the balance never rises, and it
+reaches zero at maturity. Both are properties a revolving product would not
+have, and if either failed the amortisation would be wrong in a way that
+changes lifetime ECL for every account on the book.
+
+### 6.2 LGD and the workout censoring trap
+
+LGD is estimated from what a bank actually has: a set of defaulted accounts,
+the exposure at the moment each defaulted, and however much has been collected
+**so far**. The generator produces exactly that in `recovery`, one row per
+default event, and never exposes `true_lgd` to the engine.
+
+The naive estimate is the obvious one:
+
+```
+observed loss = 1 - (recovered so far) / (exposure at default)
+```
+
+averaged over all defaults. It is wrong, and it is wrong in a direction that
+can be worked out before measuring anything. Collections on an unsecured
+default runs for months — twelve, in this configuration. An account that
+defaulted last month has barely started; one that defaulted three years ago is
+finished. Both sit in the same table, and **for the unresolved account that
+figure is not its LGD. It is its LGD plus however much is still to come.**
+
+Measured on the full book:
+
+| | defaults | mean loss |
+|---|---|---|
+| resolved workouts | 2,288 | **65.10%** |
+| unresolved workouts | 959 | 77.05% |
+| all defaults (naive) | 3,247 | 68.63% |
+| **truth** | | **65.1%** |
+
+The estimate from resolved workouts only lands within **0.19pp** of the truth,
+at 0.37 standard errors. The naive estimate overstates it by **3.53pp**, and
+the unresolved cases viewed alone sit roughly **twelve points** above the
+resolved ones. Per segment:
+
+| segment | resolved | unresolved | LGD (resolved) | LGD (naive) | true | bias |
+|---|---|---|---|---|---|---|
+| prime | 475 | 232 | 65.08% | 69.10% | 65.16% | +4.01pp |
+| near_prime | 793 | 326 | 65.35% | 68.84% | 65.16% | +3.49pp |
+| subprime | 1,020 | 401 | 64.91% | 68.23% | 64.94% | +3.32pp |
+
+This is the **same shape as the Phase 2 roll-rate trap, by a different
+mechanism**. There the bias came from the end of an account's series; here from
+the beginning of a workout. In both cases the naive denominator includes
+observations whose outcome is not yet known, and in both cases the bias has a
+sign that follows from the mechanism rather than from the data.
+
+So the estimate uses resolved workouts only. The cost is real: excluding
+unresolved cases throws away **29.5%** of the defaults, and on a small book that
+is the difference between an estimate and a guess. That is the trade, and it is
+the right side of it — an estimate built on fewer resolved cases is noisy, one
+built on more unresolved cases is wrong, and noise is the error that shrinks
+when the book grows.
+
+The test suite asserts the bias **exists** as firmly as it asserts the estimate
+is accurate. An engine that failed to reproduce a known bias would be
+demonstrating nothing, and a test that only checked the right answer would pass
+on data where the mechanism had quietly stopped working.
+
+### 6.3 LGD is reported with a standard error
+
+Unlike PD, which rests on half a million observed transitions, LGD rests on a
+few hundred resolved defaults per segment. The standard error is therefore
+worth quoting — roughly **0.5pp** on the full book — and the engine quotes it.
+A point estimate presented without one invites more confidence than the data
+supports, which on an input that multiplies directly into the provision is not
+a presentational matter.
+
+Realised losses are clipped to `[0, 1]`, and the count of clipped cases is
+reported rather than hidden. A recovery exceeding the exposure gives a negative
+loss, and collection costs can push a loss above 100%; neither is an error, but
+an LGD outside `[0, 1]` breaks the arithmetic downstream.
+
+### 6.4 "Too imprecise to judge" is not "wrong" — the same error, a fourth time
+
+Phase 5's gates were set from sampling theory before any estimate existed: 2pp
+absolute (the materiality question — would a provision built on this be
+meaningfully wrong?) and 3 standard errors (the statistical question — is the
+gap bigger than noise explains?).
+
+The committed 400-account sample passed the absolute gate at **0.0189 against
+0.0200**. That is a pass, and it was worth nothing. Measured across six seeds
+at that size:
+
+| seed | resolved per segment | max abs error | max standard error | error in SEs | absolute gate |
+|---|---|---|---|---|---|
+| 42 | 10 | 0.0189 | 0.0439 | 0.43 | pass |
+| 101 | 11 | 0.0243 | 0.0395 | 0.74 | **fail** |
+| 7 | 11 | 0.0493 | 0.0274 | 2.09 | **fail** |
+| 2024 | 10 | 0.0608 | 0.0586 | 2.18 | **fail** |
+| 555 | 9 | 0.0491 | 0.0501 | 0.98 | **fail** |
+| 88 | 10 | 0.0478 | 0.0515 | 1.36 | **fail** |
+
+One pass, five failures — and the standard-error gate passed on **all six**,
+worst case 2.18 against its limit of 3.0. With ~10 resolved defaults per
+segment the standard error is near 4pp, so an estimate lands more than 2pp from
+the truth roughly half the time by chance alone. CI runs on that sample, so CI
+was **green by luck of the seed** and one regeneration away from red with
+nothing broken.
+
+A 2pp materiality limit only means something if the estimate is precise enough
+for a 2pp gap to be distinguishable from noise. So the absolute gate is now
+applied only when the worst segment standard error is at most **half** the
+tolerance — when the estimate is at least twice as precise as the limit it is
+held to. Below that it reports `not assessed`, which is a different statement
+from `fail`. The standard-error gate always applies, because an error expressed
+in standard errors already accounts for the sample size, and it is the gate that
+actually guards Phase 5 in CI.
+
+Two things make this an honest exemption rather than an escape hatch, and both
+are enforced by tests rather than by intention:
+
+1. **The decision is made from the input, before the result exists.**
+   `validate()` computes the precision test from the standard error — a
+   property of the sample — and the accuracy figures only afterwards. The
+   ordering is the control, so a test reads the function's own source and
+   asserts the error is not computed first. It failed on the first version of
+   the code, where the assessability block sat below the error calculation.
+2. **A book precise enough really is judged.** An exemption that applied at
+   every size would be a gate that never fires, which is indistinguishable from
+   having no gate. So the other half is asserted too: at 14,000 accounts the
+   gate is assessable and the engine is held to it.
+
+This is the **fourth** instance of one error in this project:
+
+> A check that cannot distinguish "the answer is no" from "I could not
+> determine the answer" will eventually report the second as the first.
+
+The others: `git check-ignore` exiting 128 outside a work tree, read as a file
+not being ignored (Phase 0); the Phase 4 PD accuracy gate failing a 400-account
+sample where 60% of matrix cells had fallen back, so the age-aware model was
+never estimated at all; and, in the scorecard project, an optimiser reporting
+`success: True` while failing to converge. The remedy has been the same every
+time — make the engine say which of the two it found — and the fact that it
+keeps recurring in new forms is the reason it is written down rather than
+remembered.
+
+### 6.5 Three smaller defects found while wiring the phase
+
+Recorded because each one is a control that was wrong rather than a feature
+that was missing.
+
+**The loader bound every parameter to every SQL file.** Phase 5 runs two files
+in one step and only the second takes an argument, so passing both the same
+arguments made DuckDB reject the first with a count mismatch. `run_sql_file`
+now binds only the parameters a file actually references, matched outside
+comments — these files carry a great deal of commentary, and a `$name`
+mentioned in prose must not be bound as though it were used.
+
+**The stage-status display could disagree with the run it described.** The
+summary table was keyed by stage name, so it had to spell every stage
+identically to the `STAGES` list. The first version said `"LGD & EAD"` against
+the list's `"LGD and EAD"` — which would have printed `NOT YET BUILT` for a
+stage that had just run and passed. Now keyed by phase number. A status display
+that can contradict the run is worse than none, because it is believed.
+
+**A missing table and an empty table are different failures.** The recovery
+loader originally skipped the write when there were no defaults, which left the
+table absent rather than empty; the SQL then died with a catalog error instead
+of returning zero rows. A book small enough to produce no defaults has no
+recoveries, and that is correct. The table is now always created — which needed
+a typed empty frame, since an untyped one gives DuckDB no schema to infer — and
+`write_table`'s refusal to write empty tables is now an explicit opt-out used
+only where emptiness is a legitimate state, with a test that the refusal still
+holds everywhere else.
+
+### 6.6 What Phase 5 would look like on a real book
+
+Three things would change, and all three make it harder:
+
+- **The workout period would have to be estimated**, not configured. Twelve
+  months is an assumption here; on a real portfolio you would measure the
+  recovery curve and decide where it flattens, and that choice would move the
+  LGD estimate.
+- **Recoveries would be discounted.** Cash collected in month 30 is worth less
+  than cash collected in month 3, and IFRS 9 LGD is a present-value measure.
+  Omitted here because it would obscure the censoring mechanism this phase is
+  built to show, and because adding it is arithmetic rather than a modelling
+  question.
+- **LGD would be modelled, not averaged.** A segment average is the right
+  starting point and the wrong finishing point: real LGD varies with the loan's
+  size, its age at default, the collections channel and the macro environment.
+  The scorecard project's WOE/logistic machinery applies directly, with the
+  target changed from default to loss.

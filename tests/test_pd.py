@@ -40,7 +40,7 @@ def built(config, tmp_path_factory):
     sized["portfolio"] = dict(config["portfolio"], n_accounts=8000)
 
     rng = set_seed(16180)
-    accounts, performance, truth = generate.generate_book(sized, rng)
+    accounts, performance, truth, recoveries = generate.generate_book(sized, rng)
 
     connection = db.connect(sized, path)
     db.write_table(connection, "accounts", accounts)
@@ -325,3 +325,102 @@ def test_the_chosen_method_clears_the_configured_threshold(built):
     checks = pdmod.validate(connection, config)
     failed = checks[~checks["passed"]]
     assert len(failed) == 0, f"failing checks: {failed.to_dict('records')}"
+
+
+# --- Added 5 Nov 2026: the CI failure this caused --------------------------
+
+def test_a_book_too_small_to_estimate_reports_not_assessed_not_failed(config, tmp_path):
+    """The bug that turned CI red, and the distinction it was missing.
+
+    CI runs the pipeline against the committed 400-account sample. Phase 4's
+    accuracy gate failed there — 12-month error 0.0282 against a 0.01 limit,
+    correlation 0.65 — and the pipeline stopped, so the whole workflow went
+    red on a repository whose code was fine.
+
+    The estimate was not inaccurate. It did not exist. Cutting 400 accounts by
+    segment AND age band AND arrears bucket left 60% of the matrix cells
+    falling back to the segment's pooled rate, with the thinnest holding a
+    single transition. "age_aware" was the pooled model wearing another name,
+    and asking how accurate it was is a question with no subject.
+
+    **A check that cannot tell "the answer is no" from "I could not determine
+    the answer" will eventually report the second as the first.** The same
+    shape as the git-ignore test that read a missing repository as a bad
+    .gitignore, and the optimiser in the football project that returned
+    `success: True` while failing to converge.
+    """
+    tiny = dict(config)
+    tiny["portfolio"] = dict(config["portfolio"], n_accounts=400)
+
+    rng = set_seed(7)
+    accounts, performance, truth, recoveries = generate.generate_book(tiny, rng)
+
+    connection = db.connect(tiny, tmp_path / "tiny.duckdb")
+    db.write_table(connection, "accounts", accounts)
+    db.write_table(connection, "loan_month", performance)
+    db.write_table(connection, "ground_truth", truth)
+    mart.build(connection, tiny, verbose=False)
+    rollrate.build(connection, verbose=False)
+    staging.build(connection, tiny, verbose=False)
+    pdmod.build(connection, tiny, verbose=False)
+
+    coverage = pdmod.estimation_coverage(connection)
+    assert coverage["fallback_share"] > 0.25, (
+        "a 400-account book should leave most matrix cells falling back; if it "
+        "no longer does, this test is not exercising the case it describes"
+    )
+
+    checks = pdmod.validate(connection, tiny)
+    assert (checks["status"] == "not assessed").all(), (
+        f"a book too small to estimate the model should report 'not assessed', "
+        f"got {checks['status'].tolist()}"
+    )
+    # And crucially: nothing is marked as a failure, so the pipeline continues.
+    assert checks["passed"].all()
+    assert not checks["assessable"].any()
+
+    connection.close()
+
+
+def test_a_book_large_enough_is_actually_assessed(built):
+    """The other half: the exemption must not swallow a real failure.
+
+    If 'not assessed' applied everywhere it would be an escape hatch rather
+    than a distinction. On a book big enough to estimate the model, the gate
+    must genuinely apply.
+    """
+    connection, config = built
+
+    coverage = pdmod.estimation_coverage(connection)
+    assert coverage["fallback_share"] <= 0.25, (
+        f"{coverage['fallback_share']:.0%} of cells fell back on the test book, "
+        "so the accuracy gate is not being exercised here at all"
+    )
+
+    checks = pdmod.validate(connection, config)
+    assert checks["assessable"].all()
+    assert (checks["status"] != "not assessed").all()
+    assert (checks["status"] == "pass").all(), (
+        f"the gate applied and did not pass: {checks.to_dict('records')}"
+    )
+
+
+def test_the_assessability_threshold_is_about_the_input_not_the_result(config):
+    """Guards against this becoming a way to make failures disappear.
+
+    The threshold asks whether the model was estimated — a property of the
+    data — and must never be derived from whether the accuracy check passed.
+    If a future edit keys it off an error measure, that is a result-driven
+    limit and exactly what this project's own rules forbid.
+    """
+    import inspect
+    source = inspect.getsource(pdmod.validate)
+
+    assert "fallback_share" in source
+    # The assessability decision must be made before any accuracy figure is
+    # computed, and from coverage alone.
+    decision = source.index("assessable =")
+    assert "mean_absolute_error" not in source[:decision], (
+        "assessability is being decided after looking at the error, which "
+        "makes it a result-driven threshold"
+    )

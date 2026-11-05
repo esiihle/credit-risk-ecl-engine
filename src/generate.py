@@ -442,6 +442,86 @@ def simulate_performance(accounts, config, rng):
     return frame
 
 
+def simulate_recoveries(accounts, performance, config, rng):
+    """What was collected on each defaulted account, as at the reporting date.
+
+    The engine cannot be handed `true_lgd` — that is the answer key. To
+    ESTIMATE loss given default it needs what a bank actually has: a set of
+    defaulted accounts, the exposure at the moment each defaulted, and however
+    much has been recovered so far.
+
+    THE WORKOUT PERIOD IS THE POINT. Collections on an unsecured default runs
+    for months. An account that defaulted last month has barely started; one
+    that defaulted three years ago is finished. Both appear in the data, and
+    the first looks catastrophic.
+
+    Recovery accrues as `progress ** front_loading` of the ultimate amount,
+    with the exponent below 1 so the easy money arrives first — which is how
+    collections actually behaves, and which makes the censoring bias smaller
+    than a linear model would suggest but still material.
+    """
+    reporting_date = pd.Timestamp(config["portfolio"]["reporting_date"])
+    cfg = config["generator"]
+    workout_months = int(cfg["workout_months"])
+    front_loading = float(cfg["recovery_front_loading"])
+    noise = float(cfg["recovery_noise"])
+
+    defaults = performance[performance["is_default"]].copy()
+    if defaults.empty:
+        # Typed, not merely empty. A frame with object-dtype columns gives
+        # DuckDB nothing to infer a schema from, so an untyped empty frame
+        # fails to load and the recovery table goes missing instead of going
+        # empty -- and a missing table is a different failure downstream from
+        # a table with no rows.
+        return pd.DataFrame({
+            "account_id": pd.Series(dtype="int64"),
+            "default_date": pd.Series(dtype="datetime64[ns]"),
+            "months_on_book_at_default": pd.Series(dtype="int64"),
+            "ead_at_default": pd.Series(dtype="float64"),
+            "months_in_workout": pd.Series(dtype="int64"),
+            "workout_complete": pd.Series(dtype="bool"),
+            "recovery_to_date": pd.Series(dtype="float64"),
+            "observed_lgd_to_date": pd.Series(dtype="float64")})
+
+    lgd_lookup = dict(zip(accounts["account_id"], accounts["true_lgd"]))
+
+    rows = []
+    for event in defaults.itertuples(index=False):
+        ead = float(event.scheduled_balance)
+        true_lgd = float(lgd_lookup[event.account_id])
+
+        # The ultimate recovery this account will eventually produce, with
+        # dispersion around the expectation. Clipped to the exposure: a
+        # collections process cannot recover more than was owed.
+        ultimate_fraction = np.clip(
+            (1.0 - true_lgd) * np.exp(rng.normal(0, noise)), 0.0, 1.0)
+        ultimate_recovery = ultimate_fraction * ead
+
+        default_date = pd.Timestamp(event.reporting_date)
+        months_in_workout = max(
+            0, _months_between(default_date, reporting_date))
+        progress = min(1.0, months_in_workout / workout_months)
+
+        recovery_to_date = ultimate_recovery * (progress ** front_loading)
+
+        rows.append({
+            "account_id": event.account_id,
+            "default_date": default_date,
+            "months_on_book_at_default": int(event.months_on_book),
+            "ead_at_default": round(ead, 2),
+            "months_in_workout": int(months_in_workout),
+            "workout_complete": bool(months_in_workout >= workout_months),
+            "recovery_to_date": round(float(recovery_to_date), 2),
+            # What an analyst would compute today from what they can see.
+            # On an incomplete workout this is NOT the account's LGD, and the
+            # whole of Phase 5 is about that distinction.
+            "observed_lgd_to_date": round(
+                float(1.0 - recovery_to_date / ead) if ead > 0 else 0.0, 6),
+        })
+
+    return pd.DataFrame(rows)
+
+
 def ground_truth(accounts, config, performance=None):
     """The answer key: true PD, EAD and ECL per account at the reporting date.
 
@@ -548,7 +628,8 @@ def generate_book(config, rng=None):
 
     accounts = build_accounts(config, rng)
     performance = simulate_performance(accounts, config, rng)
+    recoveries = simulate_recoveries(accounts, performance, config, rng)
     # The performance frame is passed so the answer key uses each account's
     # ACTUAL bucket at the reporting date — see `ground_truth`.
     truth = ground_truth(accounts, config, performance)
-    return accounts, performance, truth
+    return accounts, performance, truth, recoveries

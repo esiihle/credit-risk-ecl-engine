@@ -198,7 +198,7 @@ def test_the_book_is_internally_consistent(config):
     small["portfolio"] = dict(config["portfolio"], n_accounts=800)
 
     rng = set_seed(7)
-    accounts, performance, truth = g.generate_book(small, rng)
+    accounts, performance, truth, recoveries = g.generate_book(small, rng)
 
     assert len(accounts) == 800
     assert accounts["account_id"].is_unique
@@ -223,7 +223,7 @@ def test_defaulted_accounts_stop_being_observed(config):
     small["portfolio"] = dict(config["portfolio"], n_accounts=600)
 
     rng = set_seed(11)
-    _, performance, _ = g.generate_book(small, rng)
+    _, performance, _, recoveries = g.generate_book(small, rng)
 
     for account_id, rows in performance.groupby("account_id"):
         defaults = rows[rows["is_default"]]

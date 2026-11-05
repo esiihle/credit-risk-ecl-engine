@@ -18,7 +18,7 @@ a per-account answer key. **78 tests green.**
 - [x] Phase 2 — Delinquency and roll rates
 - [x] Phase 3 — IFRS 9 staging
 - [x] Phase 4 — PD term structure
-- [ ] Phase 5 — LGD and EAD
+- [x] Phase 5 — LGD and EAD
 - [ ] Phase 6 — ECL calculation
 - [ ] Phase 7 — Vintage and portfolio MI
 - [ ] Phase 8 — SAS implementation and reconciliation
@@ -37,7 +37,7 @@ a per-account answer key. **78 tests green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 78 tests
+pytest                                    # 101 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -48,6 +48,115 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-11-05 — Phase 5: LGD, EAD, and CI that was passing by luck
+
+Delivered with the Phase 4 CI fix folded in, because the fix and the phase
+turned out to be the same problem twice.
+
+#### The CI failure
+`pytest` passed; `run_pipeline.py --sample` exited 1. Phase 4's PD accuracy gate
+failed on the 400-account sample — 12-month error 0.0282 against a 0.010 limit,
+and the "best" method came out as `segmented` rather than `age_aware`.
+
+Not a bug in the engine. **60.4% of the age-aware matrix cells had fallen back**
+to the segment's pooled rate (thinnest cell: one transition) against 1.8% on the
+full book. The age-aware model was never estimated; the gate was measuring a
+pooled model wearing the age-aware name and reporting it as an accuracy failure.
+
+`max_fallback_share_for_pd_assessment: 0.25` now decides, from the fallback
+share alone, whether the gate can be applied at all. Above it the gate reports
+`not assessed` rather than `fail`, and the pipeline continues.
+
+#### Phase 5, and the asymmetry it was designed around
+| | EAD | LGD |
+|---|---|---|
+| nature | contractual arithmetic | statistical estimate |
+| validated | to the cent, 158,696 account-months | 2pp, and within 3 SEs |
+
+Choosing an unsecured **term** product back in Phase 0 is what made EAD exact:
+the borrower cannot increase their exposure. On a card or an overdraft EAD
+becomes a second model with its own data problem, and two uncertain inputs
+would obscure which one was driving the error.
+
+#### The result: the workout censoring trap
+| | defaults | mean loss |
+|---|---|---|
+| resolved workouts | 2,288 | **65.10%** |
+| unresolved workouts | 959 | 77.05% |
+| all defaults (naive) | 3,247 | 68.63% |
+| **truth** | | **65.1%** |
+
+Resolved-only lands **0.19pp** from the truth, at 0.37 standard errors. The
+naive estimate overstates by **3.53pp**; the unresolved cases alone sit ~12
+points high. An account that defaulted last month has barely begun collections,
+so its loss-to-date is not its LGD — it is its LGD plus whatever is still to
+come.
+
+Same shape as the Phase 2 roll-rate trap, different mechanism: there the bias
+came from the end of an account's series, here from the beginning of a workout.
+The suite asserts the bias **still exists** as firmly as it asserts the estimate
+is accurate, because an engine that stopped reproducing a known bias would be
+demonstrating nothing.
+
+#### The same error, a fourth time
+The sample passed the absolute LGD gate at **0.0189 against 0.0200**. That pass
+was worth nothing. Across six seeds at 400 accounts:
+
+| seed | 42 | 101 | 7 | 2024 | 555 | 88 |
+|---|---|---|---|---|---|---|
+| absolute gate | pass | fail | fail | fail | fail | fail |
+| error in SEs | 0.43 | 0.74 | 2.09 | 2.18 | 0.98 | 1.36 |
+
+One pass in six — and the standard-error gate passed on all six. With ~10
+resolved defaults per segment the standard error is near 4pp, so a 2pp limit is
+measuring luck. **CI was green by seed and one regeneration away from red with
+nothing broken.**
+
+The absolute gate now applies only when the worst segment standard error is at
+most half the tolerance. Two tests keep that honest: one reads `validate()`'s
+own source to assert the precision test is computed **before** the error exists
+(it failed on the first version, where the block sat underneath), and one
+asserts that a 14,000-account book **is** judged — an exemption that applied at
+every size would be a gate that never fires.
+
+> A check that cannot distinguish "the answer is no" from "I could not
+> determine the answer" will eventually report the second as the first.
+
+Fourth instance: `git check-ignore` exiting 128 (Phase 0), the Phase 4 fallback
+gate, the scorecard optimiser's `success: True`, and now this.
+
+#### Three smaller defects, all controls rather than features
+- **The loader bound every parameter to every SQL file.** Phase 5 runs two files
+  and only one takes an argument. `run_sql_file` now binds only what a file
+  references, matched outside comments — these files carry a lot of prose, and a
+  `$name` in commentary must not be bound as though used.
+- **The stage-status table could contradict the run.** Keyed by name, it said
+  `"LGD & EAD"` against `STAGES`' `"LGD and EAD"`, which would have printed
+  `NOT YET BUILT` for a stage that had just passed. Keyed by number now.
+- **A missing table and an empty one are different failures.** The recovery
+  loader skipped the write when there were no defaults, leaving the table absent
+  rather than empty, and the SQL died with a catalog error instead of returning
+  zero. Always created now, via a typed empty frame.
+
+#### The documentation was stale, and nothing was checking it
+`docs/ROADMAP.md` still listed Phase 1 as `next`. It had been wrong for four
+phases, because the README carried the real state and nobody re-read the
+roadmap. Worse: the fix I first wrote claimed "the README's phase table and test
+count are checked by the test suite" — and **no test checked either**.
+
+`tests/test_docs.py` makes the claim true: the README's test count must equal
+the real one, the README and roadmap must agree on which phases are done, the
+done phases must be contiguous, and every done phase must have a methodology
+section. No numeric literals from the documents appear in it — the sister
+project's version of this file hardcoded the numbers it was meant to verify, so
+when the README was wrong the test **defended** the error.
+
+#### Next
+Phase 6 — ECL: `PD × LGD × EAD`, discounted at the effective interest rate,
+reconciled to the answer key's `true_ecl_lifetime` by stage and by segment.
+
+---
 
 ### 2026-10-31 — Phase 4: the PD term structure, and a broken answer key
 Three SQL files, a validation module, and the first phase that had to prove a

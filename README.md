@@ -51,12 +51,14 @@ them is wrong — and that is a finding, not a mystery.
 
 Every table and report says the book is synthetic.
 
-## Current state — Phase 4 complete
+## Current state — Phase 5 complete
 
-Book, answer key, warehouse, CI, a data mart, roll rates, IFRS 9 staging, and a
-**PD term structure that is 9x more accurate per account than a pooled curve** —
-every account's 12-month and lifetime PD measured against an answer key that
-knows the true value. **78 tests pass.**
+Book, answer key, warehouse, CI, a data mart, roll rates, IFRS 9 staging, a
+**PD term structure 9x more accurate per account than a pooled curve**, and now
+both remaining ECL inputs: an exposure schedule matching the annuity formula
+**to the cent** across 158,696 account-months, and an **LGD estimated from
+resolved collections workouts only — within 0.19pp of the truth, against a
+naive estimate biased upward by 3.5pp.** **101 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -64,7 +66,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 78 tests
+pytest                                   # 101 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -82,14 +84,45 @@ anything.
 | **2** | Delinquency buckets and roll rates | **done** |
 | **3** | IFRS 9 staging — the SICR rules | **done** |
 | **4** | PD term structure, 12-month vs lifetime | **done** |
-| 5 | LGD and EAD | next |
-| 6 | ECL calculation and discounting at the EIR | |
+| **5** | LGD from resolved workouts, EAD by amortisation | **done** |
+| 6 | ECL calculation and discounting at the EIR | next |
 | 7 | Vintage curves and portfolio MI | |
 | 8 | SAS `PROC SQL` implementation + reconciliation | |
 | 9 | Documentation and study guide | |
 
 Phase 4 is the join to the scorecard project: that one produces a PD, this one
 consumes it to produce a balance-sheet provision.
+
+### What Phase 5 found
+
+LGD is the only genuinely uncertain input in this engine — exposure is
+arithmetic, and PD rests on half a million observed transitions. LGD rests on a
+few thousand defaults, each of which takes a year to resolve, and that is where
+the trap is:
+
+| | defaults | mean loss |
+|---|---|---|
+| resolved workouts | 2,288 | **65.10%** |
+| unresolved workouts | 959 | 77.05% |
+| all defaults — the naive estimate | 3,247 | 68.63% |
+| **truth** | | **65.1%** |
+
+An account that defaulted last month has barely begun collections. Its
+loss-to-date is not its LGD; it is its LGD plus however much is still to come.
+Averaging those in overstates the loss by 3.5 points, and the bias runs one way
+— toward a bigger provision — because the mechanism says it must.
+
+Same shape as the Phase 2 roll-rate trap, different mechanism: there the bias
+came from the end of an account's series, here from the beginning of a workout.
+Both include observations whose outcome is not yet known.
+
+Phase 5 also caught CI passing **by luck of the seed**. The absolute LGD gate
+passed on the committed sample at 0.0189 against 0.0200; across six seeds at
+that size, one passed and five failed, while the sample-size-aware gate passed
+on all six. A 2pp materiality limit means nothing when the standard error is
+4pp, so that gate now reports `not assessed` below a precision requirement —
+decided from the sample before any error is computed, and enforced by a test
+that reads the function's own source. See methodology §6.4.
 
 ## Two implementations, reconciled
 
@@ -106,11 +139,13 @@ rather than asserted to be.
 
 ```
 config.yaml     every threshold and accounting policy choice, in one readable place
-src/            config, generate (the book + its answer key), db (DuckDB harness)
+src/            config, generate (the book + its answer key), db (DuckDB harness),
+                mart, rollrate, staging, pd, lgd — one module per phase
 sql/            the engine's logic, as SQL — readable, reviewable, portable
 scripts/        generate_book.py · run_pipeline.py
-tests/          78 tests; the answer key is checked against the simulation,
-                and every mart quality check is shown to fail when it should
+tests/          101 tests; the answer key is checked against the simulation,
+                every mart quality check is shown to fail when it should, and
+                the known biases are asserted to still be there
 docs/           OVERVIEW · ROADMAP · methodology
 data/sample/    a small committed book so a clone runs out of the box
 .github/        CI: the suite plus a pipeline run, on Python 3.11 and 3.12

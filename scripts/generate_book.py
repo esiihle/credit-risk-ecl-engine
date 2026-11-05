@@ -103,14 +103,20 @@ def main():
           "construction\n")
 
     started = time.time()
-    accounts, performance, truth = generate.generate_book(config, rng)
+    accounts, performance, truth, recoveries = generate.generate_book(config, rng)
     print(f"  simulated in {time.time() - started:.1f}s")
 
     connection = db.connect(config, target)
-    for name, frame in (("accounts", accounts),
-                        ("loan_month", performance),
-                        ("ground_truth", truth)):
-        rows = db.write_table(connection, name, frame)
+    tables = [("accounts", accounts),
+              ("loan_month", performance),
+              ("ground_truth", truth),
+              # Written even when empty: a book small enough to produce no
+              # defaults still needs the table to exist, because a missing
+              # table and an empty one fail very differently downstream.
+              ("recovery", recoveries)]
+    for name, frame in tables:
+        rows = db.write_table(connection, name, frame,
+                              allow_empty=(name == "recovery"))
         print(f"  wrote {name:<14} {rows:>10,} rows")
 
     print(summarise(accounts, performance, truth, config))

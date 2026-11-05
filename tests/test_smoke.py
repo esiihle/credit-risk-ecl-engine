@@ -68,11 +68,12 @@ def test_the_warehouse_opens_and_describes_itself(tmp_path):
     rng = set_seed(1)
     small = dict(config)
     small["portfolio"] = dict(config["portfolio"], n_accounts=200)
-    accounts, performance, truth = generate.generate_book(small, rng)
+    accounts, performance, truth, recoveries = generate.generate_book(small, rng)
 
     assert db.write_table(connection, "accounts", accounts) == 200
     assert db.write_table(connection, "loan_month", performance) == len(performance)
     assert db.write_table(connection, "ground_truth", truth) == len(truth)
+    assert db.write_table(connection, "recovery", recoveries) == len(recoveries)
 
     summary = db.describe(connection)
     for table in db.CORE_TABLES:

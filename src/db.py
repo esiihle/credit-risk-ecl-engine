@@ -11,6 +11,7 @@ PROC SQL and reconciles the two.
 Everything here is deliberately thin. The engine's logic belongs in SQL under
 `sql/`, not in Python wrappers: the point of the project is to show the SQL.
 """
+import re
 from pathlib import Path
 
 import duckdb
@@ -25,6 +26,8 @@ CORE_TABLES = {
     "loan_month": "the fact table: one row per account per month on book",
     "ground_truth": "the answer key — true PD, EAD and ECL, known because the "
                     "book is simulated",
+    "recovery": "one row per default event: exposure at default and what "
+                "collections has recovered so far",
 }
 
 
@@ -58,15 +61,26 @@ def connect(config, path=None, read_only=False):
     return duckdb.connect(str(target), read_only=read_only)
 
 
-def write_table(connection, name, frame, replace=True):
+def write_table(connection, name, frame, replace=True, allow_empty=False):
     """Write a dataframe as a table.
 
     `replace=True` by default because every table here is derived — rebuilt
     from the generator or from SQL — so an append would silently double a book.
+
+    An empty frame is refused unless `allow_empty` says emptiness is a
+    legitimate state for this table. Almost always it is not: an empty table is
+    a bug upstream, and it is far cheaper to diagnose here than three joins
+    later when the symptom is a missing row rather than a missing table.
+
+    `recovery` is the exception the flag exists for. A book small enough to
+    produce no defaults has no recoveries, and that is correct rather than
+    broken — but the table still has to exist, because a MISSING table and an
+    EMPTY one fail very differently downstream: the first takes out the whole
+    query with a catalog error, the second flows through as a zero.
     """
     if not isinstance(frame, pd.DataFrame):
         raise DatabaseError(f"{name}: expected a DataFrame, got {type(frame)}")
-    if frame.empty:
+    if frame.empty and not allow_empty:
         raise DatabaseError(f"{name}: refusing to write an empty table.")
 
     connection.register("_incoming", frame)
@@ -106,9 +120,34 @@ def run_sql_file(connection, path, **parameters):
         raise DatabaseError(f"No SQL file at {path}")
 
     statement = path.read_text(encoding="utf-8")
-    if parameters:
-        return connection.execute(statement, parameters).df()
+
+    # Only pass the parameters this file actually references. A build step that
+    # runs several files in sequence should not have to track which of them
+    # takes which argument, and DuckDB rejects an unreferenced parameter with a
+    # count mismatch rather than ignoring it.
+    #
+    # Matching is done outside comments, because a `$name` mentioned in the
+    # commentary of a file that does not use it would otherwise be bound as
+    # though it did -- and these files carry a great deal of commentary.
+    bindable = _parameters_used(statement)
+    supplied = {k: v for k, v in parameters.items() if k in bindable}
+    missing = bindable - set(parameters)
+    if missing:
+        raise DatabaseError(
+            f"{path.name} references {sorted(missing)} but they were not supplied")
+
+    if supplied:
+        return connection.execute(statement, supplied).df()
     return connection.execute(statement).df()
+
+
+_COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
+_PARAMETER = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _parameters_used(statement):
+    """The `$name` parameters a SQL statement binds, ignoring its comments."""
+    return set(_PARAMETER.findall(_COMMENT.sub(" ", statement)))
 
 
 def _count(connection, name):
