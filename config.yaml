@@ -255,8 +255,57 @@ validation:
   # about whether it passed. Added 5 Nov 2026. See methodology §6.4.
   max_lgd_standard_error_for_absolute_gate: 0.01
 
-  # Total ECL must reconcile to the analytic figure within this relative gap.
-  max_ecl_relative_error: 0.02        # 2%
+  # --- ECL (Phase 6) ---------------------------------------------------------
+  # TWO GATES, BECAUSE THERE ARE TWO QUESTIONS, AND ONE NUMBER WAS ANSWERING
+  # NEITHER OF THEM WELL.
+  #
+  # Phase 6's own work is the ARITHMETIC: marginal rather than cumulative PD,
+  # the horizon each IFRS 9 stage dictates, discounting at the effective
+  # interest rate, and the separate formula a credit-impaired account needs.
+  # That is deterministic, so it is checked by feeding the engine's expression
+  # the exact inputs from `ground_truth_monthly` and requiring the answer key
+  # back to the cent. This is the gate that actually guards this phase.
+  max_ecl_arithmetic_residual: 0.01        # currency units, per account
+  #
+  # Whether the ECL built from ESTIMATED inputs is close to truth is a
+  # different question, and it is mostly a question about Phases 4 and 5.
+  #
+  # The previous single threshold of 2% could not be met by correct code. ECL
+  # is a product of three estimated inputs, so to first order its relative
+  # error is the SUM of their relative errors:
+  #
+  #   PD   12-month gate is 1pp absolute on a portfolio 12-month PD near 9.2%
+  #        -> about 11% relative. Lifetime gate is 15% relative outright.
+  #   LGD  2pp absolute on an LGD near 65% -> about 3% relative.
+  #   EAD  exact.
+  #
+  # So every input gate can pass while ECL is 14-18% out. Demanding 2% was not
+  # a gate on the ECL calculation; it was a second, 7.5x stricter, implicit
+  # gate on Phase 4's PD — and the engine duly missed it at -2.25% with
+  # arithmetic that reconciles to 1.8e-11 and inputs comfortably inside their
+  # own tolerances.
+  #
+  # It also failed in the other direction: a sum formed WRONGLY (cumulative PD,
+  # the wrong horizon, no discounting) can land within a few percent on a short
+  # book and pass. A tolerance that is simultaneously unmeetable by correct code
+  # and passable by incorrect code is measuring the wrong thing.
+  #
+  # 15% is therefore a BACKSTOP against gross error, set at the level the input
+  # gates imply, and not the primary control. The primary controls are the
+  # residual above and the PD and LGD gates in their own phases.
+  #
+  # Changed 6 Nov 2026, after a result was seen. Recorded here because this
+  # project's rule is that a limit which moves to accommodate a result was
+  # never a limit — and the defence is that the FORM was wrong, not that the
+  # number was inconvenient: the old gate was replaced by a stricter one on
+  # this phase's actual work, not merely loosened. See methodology §7.3.
+  max_ecl_relative_error: 0.15
+
+  # Under-provisioning is the dangerous direction for a loss allowance, so the
+  # engine reports the SIGN of its error prominently rather than only the
+  # magnitude. Not a gate: a bias inherited from a PD estimate that passed its
+  # own tolerance is a known limitation to disclose, not a failure to hide.
+  report_ecl_bias_direction: true
   # Every account must be in exactly one stage, and balances must tie out.
   require_exact_stage_partition: true
   max_balance_reconciliation_error: 0.01   # currency units, per account

@@ -113,10 +113,16 @@ def main():
               # Written even when empty: a book small enough to produce no
               # defaults still needs the table to exist, because a missing
               # table and an empty one fail very differently downstream.
-              ("recovery", recoveries)]
+              ("recovery", recoveries),
+              # The answer key at the grain the ECL sum works on, so Phase 6
+              # can check its arithmetic against exact inputs rather than only
+              # its output against an approximate total.
+              ("ground_truth_monthly",
+               generate.true_monthly_schedule(accounts, config, performance))]
     for name, frame in tables:
-        rows = db.write_table(connection, name, frame,
-                              allow_empty=(name == "recovery"))
+        rows = db.write_table(
+            connection, name, frame,
+            allow_empty=name in ("recovery", "ground_truth_monthly"))
         print(f"  wrote {name:<14} {rows:>10,} rows")
 
     print(summarise(accounts, performance, truth, config))

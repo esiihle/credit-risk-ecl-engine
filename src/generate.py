@@ -522,6 +522,100 @@ def simulate_recoveries(accounts, performance, config, rng):
     return pd.DataFrame(rows)
 
 
+def true_monthly_schedule(accounts, config, performance=None):
+    """The answer key at the grain the ECL sum actually works on.
+
+    `ground_truth` returns one ECL figure per account. That is enough to say
+    whether the engine's total is close, and not enough to say WHY — and on a
+    quantity built by multiplying three estimated inputs together, "close" is
+    not a demonstration that the arithmetic is right.
+
+    This emits the same analytic truth one month at a time: for every account
+    and every future month, the true probability of defaulting in that month,
+    the exposure then, and the discount factor applied to it. Feeding those
+    three columns into the engine's own ECL expression must reproduce the key
+    to the cent. That isolates what Phase 6 builds — marginal rather than
+    cumulative PD, the horizon the stage dictates, discounting at the EIR, the
+    separate treatment of credit-impaired accounts — from the accuracy of the
+    PD and LGD estimates built in earlier phases.
+
+    Those are two different questions and they need two different tolerances.
+    An ECL within 2% of truth says nothing about whether the sum was formed
+    correctly, because a correctly formed sum over inputs carrying 6% PD error
+    cannot be within 2%. Conversely a sum formed WRONGLY — cumulative instead
+    of marginal, say — could still land within a few percent on a short book
+    and pass. Phase 6 therefore checks the arithmetic exactly and the inputs
+    separately.
+
+    GRAIN: one row per account per future month to maturity. Credit-impaired
+    accounts are deliberately absent: their loss does not arise in a future
+    month, so there is no monthly schedule to emit. See `ground_truth`.
+    """
+    reporting_date = pd.Timestamp(config["portfolio"]["reporting_date"])
+
+    observed_bucket = {}
+    if performance is not None and len(performance):
+        at_date = performance[
+            pd.to_datetime(performance["reporting_date"]).dt.to_period("M")
+            == reporting_date.to_period("M")
+        ]
+        observed_bucket = dict(zip(at_date["account_id"], at_date["arrears_bucket"]))
+
+    account_ids, horizons, marginals, exposures_out, discounts_out = [], [], [], [], []
+
+    for account in accounts.itertuples(index=False):
+        months_on_book = _months_between(account.origination_date, reporting_date)
+        if months_on_book < 0 or months_on_book > account.term_months:
+            continue
+        remaining = int(account.term_months - months_on_book)
+        if remaining <= 0:
+            continue
+
+        if performance is not None:
+            if account.account_id not in observed_bucket:
+                continue
+            start_bucket = int(observed_bucket[account.account_id])
+        else:
+            start_bucket = 0
+
+        # No monthly schedule for an account already in default: the absorbing
+        # state leaves no probability to default in any future month, which is
+        # exactly why such accounts take a different ECL formula rather than a
+        # longer horizon.
+        if start_bucket == DEFAULT_BUCKET:
+            continue
+
+        curve = cumulative_pd_curve(account.true_risk_multiplier, start_bucket,
+                                    months_on_book, remaining, config)
+        marginal = np.diff(curve)
+        months = np.arange(1, remaining + 1)
+        exposure = balance_at(account.principal, account.annual_rate,
+                              account.term_months, months_on_book + months)
+        i = monthly_rate(account.annual_rate)
+
+        account_ids.append(np.full(remaining, account.account_id, dtype=object))
+        horizons.append(months)
+        marginals.append(marginal)
+        exposures_out.append(np.asarray(exposure, dtype=float))
+        discounts_out.append(1.0 / (1.0 + i) ** months)
+
+    if not account_ids:
+        return pd.DataFrame({
+            "account_id": pd.Series(dtype="object"),
+            "horizon": pd.Series(dtype="int64"),
+            "true_marginal_pd": pd.Series(dtype="float64"),
+            "true_ead": pd.Series(dtype="float64"),
+            "true_discount_factor": pd.Series(dtype="float64")})
+
+    return pd.DataFrame({
+        "account_id": np.concatenate(account_ids),
+        "horizon": np.concatenate(horizons).astype("int64"),
+        "true_marginal_pd": np.concatenate(marginals),
+        "true_ead": np.concatenate(exposures_out),
+        "true_discount_factor": np.concatenate(discounts_out),
+    })
+
+
 def ground_truth(accounts, config, performance=None):
     """The answer key: true PD, EAD and ECL per account at the reporting date.
 
@@ -591,10 +685,66 @@ def ground_truth(accounts, config, performance=None):
         i = monthly_rate(account.annual_rate)
         discounts = 1.0 / (1.0 + i) ** np.arange(1, remaining + 1)
 
-        ecl_lifetime = float((marginal * account.true_lgd * exposures * discounts).sum())
-        months_12 = min(horizon_12, remaining)
-        ecl_12 = float((marginal[:months_12] * account.true_lgd
-                        * exposures[:months_12] * discounts[:months_12]).sum())
+        balance_now = float(balance_at(account.principal, account.annual_rate,
+                                       account.term_months, months_on_book))
+
+        if start_bucket == DEFAULT_BUCKET:
+            # AN ACCOUNT THAT HAS ALREADY DEFAULTED NEEDS A DIFFERENT FORMULA,
+            # and the first version of this function did not notice.
+            #
+            # `marginal` is the probability of defaulting IN each future month.
+            # Default is absorbing, so for an account already in bucket 4 the
+            # cumulative curve is 1.0 at t=0 and stays there, every forward
+            # increment is zero, and the sum below came out as exactly 0.00 —
+            # while `true_pd_lifetime` for the same account came out 1.00.
+            #
+            # The key therefore recorded 61 credit-impaired accounts carrying
+            # R939k of exposure as having a 100% chance of default and no
+            # expected loss whatsoever. Internally contradictory, and in the
+            # one direction an ECL engine must never be wrong in: no provision
+            # at all against the part of the book already in default.
+            #
+            # The formula was not wrong about what it computes — expected loss
+            # from FUTURE default events — it was being asked a question it
+            # does not answer. For an impaired account the default is not a
+            # future event to be weighted by its probability; it has happened.
+            # The loss is the exposure that will not be recovered:
+            #
+            #     ECL = LGD x EAD, at the reporting date, undiscounted
+            #
+            # Undiscounted because the loss is already incurred rather than
+            # expected in some future month, and because the LGD this is
+            # multiplied by is not yet a present-value measure either (Phase 5,
+            # methodology §6.6) — discounting one side of the product and not
+            # the other would be worse than discounting neither.
+            #
+            # 12-month and lifetime ECL are equal for an impaired account: the
+            # loss does not grow with the horizon because the event that causes
+            # it has already occurred.
+            #
+            # This is the second time the answer key has been valid for only
+            # part of the book — the first was in this same function, where
+            # every account's PD was computed as though it were performing
+            # (see the docstring above). Both were found by comparing the key
+            # against the engine and asking which of the two was wrong.
+            #
+            # Multiplied by the ROUNDED balance — the same figure this function
+            # publishes as `true_balance` — so that the key's ECL can be
+            # reproduced from the key's own columns. Using the unrounded value
+            # here left a residual of 0.0038 against an otherwise
+            # floating-point-exact reconciliation, which is immaterial as money
+            # and unacceptable as a discrepancy nobody could explain from the
+            # published numbers. This project's rule is that every figure must
+            # be regenerable; a key containing a number its own columns cannot
+            # reproduce breaks that rule at the source.
+            ecl_lifetime = float(account.true_lgd * round(balance_now, 2))
+            ecl_12 = ecl_lifetime
+        else:
+            ecl_lifetime = float(
+                (marginal * account.true_lgd * exposures * discounts).sum())
+            months_12 = min(horizon_12, remaining)
+            ecl_12 = float((marginal[:months_12] * account.true_lgd
+                            * exposures[:months_12] * discounts[:months_12]).sum())
 
         rows.append({
             "account_id": account.account_id,
@@ -602,9 +752,7 @@ def ground_truth(accounts, config, performance=None):
             "remaining_term": remaining,
             "true_start_bucket": start_bucket,
             "truth_assumes_performing": performance is None,
-            "true_balance": round(float(balance_at(
-                account.principal, account.annual_rate,
-                account.term_months, months_on_book)), 2),
+            "true_balance": round(balance_now, 2),
             "true_pd_12m": pd_12,
             "true_pd_lifetime": pd_lifetime,
             "true_lgd": account.true_lgd,

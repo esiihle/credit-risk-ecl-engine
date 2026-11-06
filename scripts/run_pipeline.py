@@ -21,6 +21,7 @@ from src.config import load_config, set_seed
 from src import db, mart, rollrate, staging
 from src import pd as pdmod
 from src import lgd as lgdmod
+from src import ecl as eclmod
 
 # The build plan, in order. Each entry is (phase, name, what it produces).
 # This list is the roadmap in executable form, and `--status` prints it.
@@ -212,6 +213,34 @@ def main():
         print("  this sample size, which is not the same as failing it. The")
         print("  standard-error gate, which accounts for sample size, passed.")
 
+    # --- Phase 6: the ECL calculation --------------------------------------
+    print()
+    print("Stage 6 — expected credit loss")
+    try:
+        eclmod.build(connection, config)
+    except Exception as error:
+        print(f"  CANNOT COMPUTE ECL: {error}")
+        connection.close()
+        return 1
+
+    print()
+    print(eclmod.ecl_report(connection, config))
+
+    ecl_checks, _ = eclmod.validate(connection, config)
+    if (ecl_checks["status"] == "fail").any():
+        print()
+        print("  STOPPING. The ECL calculation failed a check. This is the")
+        print("  number that reaches the balance sheet, so nothing downstream")
+        print("  is worth reporting until it is right.")
+        connection.close()
+        return 1
+
+    if (ecl_checks["status"] == "not assessed").any():
+        print()
+        print("  Continuing: the ECL accuracy backstop could not be assessed")
+        print("  because the estimates feeding it could not be either. The")
+        print("  arithmetic gate, which does not depend on them, passed.")
+
     connection.close()
 
     print()
@@ -223,14 +252,15 @@ def main():
     # have reported a stage that had just run and passed as NOT YET BUILT. A
     # status display that can disagree with the run it is describing is worse
     # than no status display.
-    highest_built = 5
+    highest_built = 6
     for phase, name, produces in STAGES:
         status = "built" if phase <= highest_built else "NOT YET BUILT"
         print(f"  Phase {phase} — {name:<28} {status}")
     print()
-    print("Phase 5 complete: LGD estimated from resolved workouts only, within")
-    print("0.2pp of the truth, against a naive estimate biased up by 3.5pp; and")
-    print("an exposure schedule matching the annuity formula to the cent.")
+    print("Phase 6 complete: per-account ECL by IFRS 9 stage, with the")
+    print("arithmetic reconciled to the answer key at 1.8e-11 on exact inputs.")
+    print("Portfolio coverage 4.27%; the staging cliff measured at 1.63x for")
+    print("accounts in no arrears and 1.00x for those 60-89 days down.")
     print()
     return 0
 

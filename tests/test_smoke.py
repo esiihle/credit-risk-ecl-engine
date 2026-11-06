@@ -74,6 +74,8 @@ def test_the_warehouse_opens_and_describes_itself(tmp_path):
     assert db.write_table(connection, "loan_month", performance) == len(performance)
     assert db.write_table(connection, "ground_truth", truth) == len(truth)
     assert db.write_table(connection, "recovery", recoveries) == len(recoveries)
+    monthly = generate.true_monthly_schedule(accounts, small, performance)
+    assert db.write_table(connection, "ground_truth_monthly", monthly) == len(monthly)
 
     summary = db.describe(connection)
     for table in db.CORE_TABLES:

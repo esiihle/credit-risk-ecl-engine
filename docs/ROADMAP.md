@@ -11,8 +11,8 @@ that pin its behaviour, and a methodology section explaining the reasoning.
 | **3** | **IFRS 9 staging — the SICR rules, where the accounting judgement lives** | **done** |
 | **4** | **PD term structure, 12-month vs lifetime — consumes the scorecard's PD** | **done** |
 | **5** | **LGD from resolved workouts only, EAD by amortisation** | **done — 5 Nov 2026** |
-| 6 | ECL calculation and discounting at the effective interest rate | next |
-| 7 | Vintage curves and portfolio MI | |
+| **6** | **ECL by IFRS 9 stage, discounted at the effective interest rate** | **done — 6 Nov 2026** |
+| 7 | Vintage curves and portfolio MI | next |
 | 8 | SAS `PROC SQL` implementation and the reconciliation harness | |
 | 9 | README, methodology, study guide | |
 

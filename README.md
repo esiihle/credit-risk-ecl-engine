@@ -51,14 +51,14 @@ them is wrong — and that is a finding, not a mystery.
 
 Every table and report says the book is synthetic.
 
-## Current state — Phase 5 complete
+## Current state — Phase 6 complete
 
 Book, answer key, warehouse, CI, a data mart, roll rates, IFRS 9 staging, a
-**PD term structure 9x more accurate per account than a pooled curve**, and now
-both remaining ECL inputs: an exposure schedule matching the annuity formula
-**to the cent** across 158,696 account-months, and an **LGD estimated from
-resolved collections workouts only — within 0.19pp of the truth, against a
-naive estimate biased upward by 3.5pp.** **101 tests pass.**
+**PD term structure 9x more accurate per account than a pooled curve**, LGD from
+resolved collections workouts only, an exposure schedule exact to the cent — and
+now **the provision itself: per-account ECL by IFRS 9 stage, with the arithmetic
+reconciled to the answer key at 1.8e-11 across 8,256 accounts.** Portfolio
+coverage 4.27%, on a 2.2% / 25.1% / 65.1% stage ladder. **118 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -66,7 +66,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 101 tests
+pytest                                   # 118 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -85,8 +85,8 @@ anything.
 | **3** | IFRS 9 staging — the SICR rules | **done** |
 | **4** | PD term structure, 12-month vs lifetime | **done** |
 | **5** | LGD from resolved workouts, EAD by amortisation | **done** |
-| 6 | ECL calculation and discounting at the EIR | next |
-| 7 | Vintage curves and portfolio MI | |
+| **6** | ECL calculation and discounting at the EIR | **done** |
+| 7 | Vintage curves and portfolio MI | next |
 | 8 | SAS `PROC SQL` implementation + reconciliation | |
 | 9 | Documentation and study guide | |
 
@@ -124,6 +124,59 @@ on all six. A 2pp materiality limit means nothing when the standard error is
 decided from the sample before any error is computed, and enforced by a test
 that reads the function's own source. See methodology §6.4.
 
+### What Phase 6 found
+
+**The answer key had no provision against its own defaulted book.** It recorded
+all 61 credit-impaired accounts at a lifetime PD of 1.00 and an ECL of exactly
+0.00 — R939k of defaulted exposure with nothing behind it. The cause was one
+line: ECL was built from the probability of defaulting in each *future* month,
+and default is absorbing, so for an account already in default every one of
+those increments is zero. The formula was right about what it computes and was
+being asked a question it does not answer. Had the engine been built to agree
+with the key, it would have shipped provisioning nothing against its defaults.
+
+**One tolerance was answering two questions.** The 2% ECL gate set in Phase 0
+could not be met by correct code: ECL is a product of three estimated inputs, so
+its relative error is roughly the sum of theirs, and Phase 4's PD gate alone
+permits 15%. The gate was 7.5x stricter than the input it inherits from — while
+*also* being loose enough that a sum formed wrongly (cumulative PD, wrong
+horizon, no discounting) could pass. It is now two gates: an exact reconciliation
+of the arithmetic on true inputs, which lands at **1.8e-11**, and a 15% backstop
+on end-to-end accuracy. See methodology §7.3.
+
+**The staging cliff is steepest for the accounts least likely to cross it.**
+Both horizons are computed for every account, so the jump at the SICR boundary
+is measurable — the same accounts, the same month, counted two ways:
+
+| arrears bucket | accounts | lifetime ÷ 12-month |
+|---|---|---|
+| 0 (current) | 6,957 | **1.633** |
+| 1 (1–29 DPD) | 853 | 1.198 |
+| 2 (30–59 DPD) | 258 | 1.030 |
+| 3 (60–89 DPD) | 127 | **1.004** |
+
+An account 60–89 days down will mostly default inside twelve months either way,
+so extending its horizon adds 0.4%. The accounts that actually trip the 30-day
+backstop face the smallest jump; the large discontinuity is reserved for
+accounts crossing via the PD trigger while still current — which Phase 3
+measured as barely firing. The cliff is real and, on this book, mostly
+hypothetical.
+
+**Assessability has to propagate.** Rehearsing CI in a clean room caught the
+400-account sample failing the ECL accuracy backstop at −15.4% — while the same
+run printed `--` for both PD gates and the LGD gate, meaning *not assessed*. The
+engine was delivering a verdict on a figure computed from estimates it had just
+said it had no evidence about. The rule now is that if the inputs could not be
+assessed, neither can the output; the arithmetic gate is unaffected, because it
+substitutes exact inputs and holds at any book size. Fifth appearance of one
+error, and the first with a general form — methodology §7.6.
+
+**The residual 2.25% is PD, not LGD.** Substituting each account's true LGD for
+the segment estimate moves the portfolio total by 0.26%. The gap is PD
+estimation error — mostly the cost of approximating a continuous seasoning
+hazard with five age bands — and the engine *under*-provisions, which is the
+direction worth reporting rather than hiding.
+
 ## Two implementations, reconciled
 
 Phase 8 reimplements the engine in SAS `PROC SQL` — what South African bank
@@ -143,7 +196,7 @@ src/            config, generate (the book + its answer key), db (DuckDB harness
                 mart, rollrate, staging, pd, lgd — one module per phase
 sql/            the engine's logic, as SQL — readable, reviewable, portable
 scripts/        generate_book.py · run_pipeline.py
-tests/          101 tests; the answer key is checked against the simulation,
+tests/          118 tests; the answer key is checked against the simulation,
                 every mart quality check is shown to fail when it should, and
                 the known biases are asserted to still be there
 docs/           OVERVIEW · ROADMAP · methodology

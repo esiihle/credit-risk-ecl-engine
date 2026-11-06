@@ -19,7 +19,7 @@ a per-account answer key. **78 tests green.**
 - [x] Phase 3 — IFRS 9 staging
 - [x] Phase 4 — PD term structure
 - [x] Phase 5 — LGD and EAD
-- [ ] Phase 6 — ECL calculation
+- [x] Phase 6 — ECL calculation
 - [ ] Phase 7 — Vintage and portfolio MI
 - [ ] Phase 8 — SAS implementation and reconciliation
 - [ ] Phase 9 — Documentation and study guide
@@ -37,7 +37,7 @@ a per-account answer key. **78 tests green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 101 tests
+pytest                                    # 118 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -48,6 +48,148 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-11-06 — Phase 6: the provision, and an answer key with nothing behind its defaults
+
+ECL is `PD x LGD x EAD`, discounted — everything the previous five phases built,
+multiplied together. The arithmetic took an afternoon. Two of the three things
+found along the way were in work already committed.
+
+#### The result
+| stage | accounts | exposure | ECL | coverage | true | error |
+|---|---|---|---|---|---|---|
+| 1 — 12-month | 7,625 | 126,289,603 | 2,821,097 | 2.23% | 2.30% | −2.99% |
+| 2 — lifetime | 570 | 9,572,408 | 2,404,604 | 25.12% | 25.30% | −0.73% |
+| 3 — impaired | 61 | 939,053 | 611,250 | 65.09% | 68.24% | −4.62% |
+| **portfolio** | **8,256** | **136,801,064** | **5,836,951** | **4.27%** | **4.36%** | **−2.25%** |
+
+#### The bug: the key had no provision against its own defaulted book
+The key recorded **all 61 credit-impaired accounts at a lifetime PD of 1.00 and
+an ECL of exactly 0.00** — R939k of defaulted exposure, nothing behind it.
+
+One line. ECL was built from `np.diff(curve)`, the probability of defaulting in
+each **future** month. Default is absorbing, so for an account already in
+bucket 4 the curve is 1.0 at t=0 and stays there, every forward increment is
+zero, and the sum is zero. The formula was right about what it computes and was
+being asked a question it does not answer: an impaired account's default is not
+a future event to weight by its probability, it has happened, and the loss is
+`LGD x EAD`.
+
+**Second time the key has been valid for only part of the book** — the first was
+the same function computing every account's PD as though it were performing
+(31 Oct). Same shape both times: a formula correct for the majority case applied
+to a population it did not describe, and both times the invalid part was where
+the numbers are largest. Had the engine been built to agree with the key, it
+would have shipped provisioning nothing against its defaults.
+
+#### One tolerance was answering two questions, and neither well
+`max_ecl_relative_error: 0.02`, set in Phase 0. The engine missed it at −2.25%
+with arithmetic reconciling to 1.8e-11 and both inputs inside their own gates.
+
+The threshold could not be met by correct code. ECL is a product of three
+estimates, so its relative error is roughly the **sum** of theirs:
+
+| input | its gate | implied relative |
+|---|---|---|
+| PD 12-month | 1pp absolute on ~9.2% | ≈ 11% |
+| PD lifetime | 15% relative | 15% |
+| LGD | 2pp absolute on ~65% | ≈ 3% |
+| EAD | exact | 0% |
+
+So a 2% ECL gate was never a gate on Phase 6; it was a **7.5x stricter implicit
+gate on Phase 4's PD**. And it was simultaneously loose enough that a sum formed
+*wrongly* — cumulative PD instead of marginal, wrong horizon, no discounting —
+could pass on a short book.
+
+Replaced with two gates for two questions:
+1. **Is the arithmetic right?** Feed the engine's own expression the true
+   marginal PD, LGD, exposure and discounts from a new `ground_truth_monthly`
+   table and demand the key back to the cent. **1.8e-11 across 8,256 accounts**,
+   exactly 0.00 for the impaired ones. This is what guards Phase 6.
+2. **Are the inputs good?** A 15% backstop at the level the input gates imply.
+
+A test asserts the first is stricter than the second, so the restructuring
+cannot be quietly undone into a mere loosening. The honest summary is that an
+exact check replaced an approximate one that could not discriminate — not that
+a limit was relaxed because it was inconvenient.
+
+#### The staging cliff is steepest for the accounts least likely to cross it
+Both horizons are computed for every account regardless of stage, so the SICR
+jump is measurable: same accounts, same month, counted two ways.
+
+| arrears bucket | accounts | lifetime ÷ 12-month |
+|---|---|---|
+| 0 (current) | 6,957 | **1.633** |
+| 1 (1–29 DPD) | 853 | 1.198 |
+| 2 (30–59 DPD) | 258 | 1.030 |
+| 3 (60–89 DPD) | 127 | **1.004** |
+
+An account 60–89 days down will mostly default inside twelve months either way,
+so lifetime adds 0.4%. Accounts tripping the 30-day backstop face a 1.019x jump;
+those in probation after curing, 1.293x. The large discontinuity is reserved for
+accounts crossing via the PD trigger while still current — the trigger Phase 3
+measured as barely firing. **The cliff is real and, on this book, mostly
+hypothetical.** That complicates the standard criticism of IFRS 9 rather than
+confirming it, which is a better thing to be able to say in an interview.
+
+#### The residual 2.25% is PD, not LGD — measured
+| | portfolio ECL | vs engine |
+|---|---|---|
+| estimated PD, estimated LGD | 5,225,701 | — |
+| estimated PD, **true** LGD | 5,212,348 | −0.26% |
+| true PD, true LGD (the key) | 5,330,202 | +2.00% |
+
+A single segment-level LGD applied to every account looks like the crude part.
+It is not: swapping in the truth moves the total by a quarter of a percent. The
+gap is PD error, mostly the cost of five discrete age bands standing in for a
+continuous seasoning hazard. The engine **under**-provisions, which is the
+dangerous direction for a loss allowance, so the sign is reported rather than
+folded into an absolute figure. Next improvement is a finer PD age structure,
+not a finer LGD.
+
+#### Assessability has to propagate — found by rehearsing CI, not by CI
+The full book passes everything. The **committed 400-account sample** failed the
+ECL accuracy backstop at **−15.4%** — while on the same run both PD gates and
+the absolute LGD gate printed `--`, *not assessed*. The engine was delivering a
+verdict on a figure built from estimates it had just said it had no evidence
+about.
+
+Fixed with a rule rather than another threshold: **if the inputs to an estimate
+could not be assessed, the estimate's accuracy cannot be assessed either.** The
+arithmetic gate is untouched and still applies — it substitutes exact inputs, so
+it reconciles at 1.8e-12 on the 162-account sample too, and silencing it would
+leave the sample run proving nothing.
+
+Fifth appearance of the same error, first time with a general form:
+
+| # | where | reported as | actually was |
+|---|---|---|---|
+| 1 | `git check-ignore` exit 128 | file not ignored | ran outside a work tree |
+| 2 | scorecard optimiser `success: True` | converged | didn't converge |
+| 3 | PD gate on the sample | inaccurate | 60% fallback cells |
+| 4 | absolute LGD gate on the sample | inaccurate | SE 4× the tolerance |
+| 5 | ECL backstop on the sample | inaccurate | inputs unassessable |
+
+Instances 3, 4 and 5 are one mechanism a layer apart, which is why this one was
+written as propagation rather than a third bespoke threshold.
+
+#### Two test-design errors, both failing on correct code
+- **"Lifetime ECL must exceed 12-month ECL beyond 12 months."** False at exactly
+  13 months remaining: the 13th month *is* maturity, where the amortised balance
+  is zero, so no loss can arise in it. 179 accounts, correct arithmetic,
+  reported as a missing horizon.
+- **The same assertion, broadened, swept in Stage 3** — whose two horizons are
+  equal *by design*, as another test in the same file asserts.
+
+Cheap direction to be wrong in, but both were checks measuring something other
+than what they claimed, which is the error this project keeps finding.
+
+#### Next
+Phase 7 — vintage curves and portfolio MI: origination-cohort loss curves,
+coverage ratios over time, and the stage-migration matrix as management
+information rather than a diagnostic.
+
+---
 
 ### 2026-11-05 — Phase 5: LGD, EAD, and CI that was passing by luck
 

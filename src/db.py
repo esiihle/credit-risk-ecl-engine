@@ -28,6 +28,8 @@ CORE_TABLES = {
                     "book is simulated",
     "recovery": "one row per default event: exposure at default and what "
                 "collections has recovered so far",
+    "ground_truth_monthly": "the answer key at the ECL sum's own grain — true "
+                            "marginal PD, exposure and discount per account-month",
 }
 
 

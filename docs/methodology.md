@@ -997,3 +997,273 @@ Three things would change, and all three make it harder:
   size, its age at default, the collections channel and the macro environment.
   The scorecard project's WOE/logistic machinery applies directly, with the
   target changed from default to loss.
+
+---
+
+## 7. The ECL calculation (Phase 6)
+
+Everything the previous five phases built, multiplied together and discounted:
+
+```
+ECL = SUM over t of  marginal_PD(t) × LGD × EAD(t) × discount(t)
+```
+
+`marginal_PD(t)` is the probability of defaulting **in** month t having
+survived to t−1 — not the cumulative PD quoted everywhere else in this project.
+Using the cumulative figure counts the same default once in every month after
+it happened; measured on this book it overstates the provision by more than
+**3×**, and it is an easy mistake to make because `pd_term_structure` offers
+both columns side by side.
+
+### 7.1 The horizon is the accounting judgement
+
+The arithmetic is identical for every account. What differs is how far the sum
+runs, and that is decided by the stage set in Phase 3:
+
+| stage | basis | horizon |
+|---|---|---|
+| 1 | 12-month ECL | t = 1 … min(12, remaining term) |
+| 2 | lifetime ECL | t = 1 … remaining term |
+| 3 | lifetime, credit-impaired | a different formula — §7.2 |
+
+The result on the full book:
+
+| stage | accounts | exposure | ECL | coverage | true coverage | error |
+|---|---|---|---|---|---|---|
+| 1 — 12-month | 7,625 | 126,289,603 | 2,821,097 | 2.23% | 2.30% | −2.99% |
+| 2 — lifetime | 570 | 9,572,408 | 2,404,604 | 25.12% | 25.30% | −0.73% |
+| 3 — impaired | 61 | 939,053 | 611,250 | 65.09% | 68.24% | −4.62% |
+| **portfolio** | **8,256** | **136,801,064** | **5,836,951** | **4.27%** | **4.36%** | **−2.25%** |
+
+A coverage ladder of 2.2% / 25.1% / 65.1% is the shape a credit committee would
+expect, and it is produced by the staging rules rather than imposed.
+
+### 7.2 The answer key had no provision against its defaulted book
+
+Phase 6 began by comparing the engine's ECL to the key and finding that the key
+recorded **all 61 credit-impaired accounts at a lifetime PD of 1.00 and an ECL
+of exactly 0.00** — R939k of defaulted exposure with nothing behind it.
+
+The cause is in one line. `ground_truth` built ECL from `np.diff(curve)`, the
+probability of defaulting in each future month. Default is absorbing, so for an
+account already in bucket 4 the cumulative curve is 1.0 at t=0 and stays there;
+every forward increment is zero and the sum is zero.
+
+The formula was not wrong about what it computes — expected loss from **future**
+default events. It was being asked a question it does not answer. For an
+impaired account the default is not a future event to be weighted by its
+probability. It has happened. The loss is the exposure that will not be
+recovered:
+
+```
+ECL = LGD × EAD at the reporting date, undiscounted
+```
+
+Undiscounted because the loss has already arisen rather than being awaited in
+some future month, and because the LGD it multiplies is not yet a present-value
+measure either (§6.6) — discounting one side of a product and not the other is
+worse than discounting neither. Twelve-month and lifetime ECL are equal for an
+impaired account: the loss does not grow with the horizon because the event
+causing it has already occurred.
+
+**This is the second time the answer key has been valid for only part of the
+book.** The first was the same function computing every account's PD as though
+it were performing (§5.6). Both were found the same way — by comparing the key
+against the engine and asking which of the two was wrong — and both had the
+same shape: a formula correct for the majority case, applied to a population it
+did not describe. The part it was invalid for was, both times, the part where
+the numbers are largest.
+
+Had the engine been built to match the key, it would have shipped provisioning
+nothing against its defaulted accounts. That is the single most wrong thing an
+ECL engine can do.
+
+A smaller consistency defect followed from the fix: the impaired ECL was first
+computed from the unrounded balance while the key publishes that balance rounded
+to 2dp, leaving a residual of 0.0038 that nobody could reproduce from the key's
+own columns. Immaterial as money, unacceptable as an unexplainable discrepancy —
+this project's rule is that every figure must be regenerable, and a key holding
+a number its own columns cannot reproduce breaks that rule at the source.
+
+### 7.3 One tolerance was answering two questions, and neither well
+
+`max_ecl_relative_error: 0.02` was set in Phase 0, before any result existed.
+The engine missed it, at −2.25%.
+
+Nothing was broken. The arithmetic reconciles to **1.8e-11**, and both inputs
+sit comfortably inside their own tolerances. The threshold itself could not be
+met by correct code, for a reason that follows from the formula: ECL is a
+product of three estimated inputs, so to first order its relative error is the
+**sum** of their relative errors.
+
+| input | its own gate | implied relative error |
+|---|---|---|
+| PD, 12-month | 1pp absolute on a portfolio PD near 9.2% | ≈ 11% |
+| PD, lifetime | 15% relative | 15% |
+| LGD | 2pp absolute on an LGD near 65% | ≈ 3% |
+| EAD | exact | 0% |
+
+Every input gate can pass while ECL is 14–18% out. A 2% ECL gate was therefore
+never a gate on this phase's work; it was a second, **7.5× stricter**, implicit
+gate on Phase 4's PD.
+
+And it failed in the other direction too. A sum formed **wrongly** — cumulative
+PD, the wrong horizon for a stage, no discounting at all — can land within a few
+percent on a short book and pass. A tolerance simultaneously unmeetable by
+correct code and passable by incorrect code is measuring the wrong thing.
+
+So the single threshold was replaced by **two gates for two questions**:
+
+1. **Is the arithmetic right?** Deterministic, so checked exactly.
+   `17_ecl_reconciliation.sql` feeds the engine's own ECL expression the true
+   marginal PD, LGD, exposure and discount factors from
+   `ground_truth_monthly`, and requires the answer key back to the cent. It
+   reconciles at **1.8e-11 across 8,256 accounts**, and 0.00 exactly for the
+   impaired ones. This is the gate that guards Phase 6, and it tests only what
+   Phase 6 builds: marginal versus cumulative PD, the per-stage horizon,
+   discounting at the EIR, and the impaired formula.
+2. **Are the inputs good?** A 15% backstop against gross error, set at the
+   level the input gates imply rather than tighter than them.
+
+This project's rule is that a limit which moves to accommodate a result was
+never a limit, so the change is recorded rather than glossed. The defence is
+that the **form** was wrong, not that the number was inconvenient: the loose
+gate was replaced by a far stricter one on this phase's actual work, and a test
+asserts that relationship so it cannot be quietly undone. The weaker claim — "we
+relaxed it to 15%" — would be the dishonest summary of what happened, and the
+honest one is that an exact check replaced an approximate one that could not
+discriminate.
+
+### 7.4 Where the remaining 2.25% comes from, measured
+
+The obvious suspect is LGD: a single segment-level figure applied to every
+account looks like the crude part of the engine. Measured, it is not.
+
+| | portfolio ECL | vs engine |
+|---|---|---|
+| estimated PD, estimated LGD (the engine) | 5,225,701 | — |
+| estimated PD, **true** LGD | 5,212,348 | −0.26% |
+| true PD, true LGD (the key) | 5,330,202 | +2.00% |
+
+Substituting each account's true LGD closes almost none of the gap. The
+residual is PD estimation error, inherited from Phase 4 and inside the tolerance
+Phase 4 set for itself — most of it the cost of approximating a continuous
+seasoning hazard with five discrete age bands.
+
+**Direction matters more than magnitude here.** The engine *under*-provisions by
+2.25%, and understatement is the dangerous direction for a loss allowance, so
+the sign is reported prominently rather than folded into an absolute figure. It
+is a disclosed limitation inherited from an input that passed its own gate, not
+a defect introduced by this phase — and the next thing worth building is a finer
+PD age structure, not a finer LGD.
+
+### 7.5 The staging cliff, measured rather than asserted
+
+IFRS 9's most-criticised feature is the discontinuity at the SICR boundary: the
+horizon switches from 12 months to lifetime and the provision multiplies, with
+no change in the account's credit quality beyond having crossed a line.
+
+`16_ecl_account.sql` computes **both** horizons for every account whatever its
+stage, so the size of that jump is a measurable property of this book — the same
+accounts, the same credit quality, the same month, counted two ways:
+
+| arrears bucket | accounts | 12-month ECL | lifetime ECL | multiple |
+|---|---|---|---|---|
+| 0 (current) | 6,957 | 2,094,124 | 3,420,593 | **1.633** |
+| 1 (1–29 DPD) | 853 | 896,614 | 1,073,837 | 1.198 |
+| 2 (30–59 DPD) | 258 | 1,179,861 | 1,215,829 | 1.030 |
+| 3 (60–89 DPD) | 127 | 965,295 | 969,390 | **1.004** |
+
+The finding complicates the standard criticism rather than confirming it: **the
+cliff is steepest for accounts in no arrears at all and essentially flat for
+those deep in them.** An account 60–89 days down will mostly default inside
+twelve months either way, so extending its horizon to lifetime adds 0.4%.
+
+Which means the accounts that actually trip the 30-day backstop face the
+*smallest* jump, and the large discontinuity is reserved for accounts that cross
+via the PD-based trigger while still current — the trigger Phase 3 measured as
+barely firing (§4.3). Split by why they are in Stage 2:
+
+| reason | accounts | exposure | cliff multiple |
+|---|---|---|---|
+| 30-day backstop | 385 | 6,353,710 | 1.019 |
+| in probation after cure | 185 | 3,218,698 | 1.293 |
+
+The cliff is real, and on this book it is mostly hypothetical.
+
+### 7.6 Assessability propagates downstream
+
+Found by rehearsing CI in a clean room before committing, which is the only
+reason it was found at all: the full book passes everything.
+
+On the committed 400-account sample the ECL accuracy backstop **failed at
+−15.4%** — while, on the same run, both Phase 4 PD gates and the Phase 5
+absolute LGD gate printed `--`, meaning *not assessed*. The engine was
+simultaneously saying it had no evidence about its PD and LGD estimates, and
+delivering a verdict on an accuracy figure computed from them.
+
+That is incoherent, and the remedy is a rule rather than another threshold:
+
+> If the inputs to an estimate could not be assessed, the estimate's accuracy
+> cannot be assessed either.
+
+`ecl.inputs_were_assessable()` consults the Phase 4 and Phase 5 gates and, if
+either declined to judge itself, the ECL backstop reports `not assessed` too.
+Two properties make it an honest exemption rather than an escape hatch, and both
+are enforced by tests:
+
+1. **The arithmetic gate is unaffected and still applies.** It substitutes
+   exact inputs, so it is independent of how good the estimates are — it
+   reconciles at 1.8e-12 on the 162-account sample and 1.8e-11 on the full
+   book. It is what guards this phase, and silencing it too would leave the
+   sample run proving nothing.
+2. **The verdict is reached from the upstream gates alone**, before this phase's
+   own error is read. A test asserts against the function's source that it
+   never consults the ECL relative error, because a decision that can see the
+   result it would be excusing is not a decision.
+
+This is the **fifth** appearance of one error, and the first time it had a
+general form rather than a local fix:
+
+| # | where | reported as | actually was |
+|---|---|---|---|
+| 1 | `git check-ignore` exit 128 (Phase 0) | file not ignored | ran outside a work tree |
+| 2 | scorecard optimiser `success: True` | converged | failed to converge |
+| 3 | PD accuracy gate on the sample (Phase 4) | inaccurate | 60% fallback cells, never estimated |
+| 4 | absolute LGD gate on the sample (Phase 5) | inaccurate | standard error 4× the tolerance |
+| 5 | ECL backstop on the sample (Phase 6) | inaccurate | its own inputs were unassessable |
+
+> A check that cannot distinguish "the answer is no" from "I could not
+> determine the answer" will eventually report the second as the first.
+
+Instances 3, 4 and 5 are the same mechanism one layer apart, which is why the
+fifth was expressed as propagation instead of a third bespoke threshold.
+
+### 7.7 Two test-design errors worth recording
+
+Both were cases of a test asserting something about the engine that was not
+true, and both failed on correct code — the cheap direction, but still checks
+measuring the wrong thing.
+
+**"Lifetime ECL must exceed 12-month ECL wherever more than 12 months remain."**
+False for an account with exactly 13 months left: the 13th month *is* maturity,
+where the amortised balance is exactly zero, so no loss can arise in it and the
+two figures are equal to the cent. 179 accounts, correct arithmetic, reported as
+a missing horizon.
+
+**The same assertion, broadened, then swept in Stage 3.** Impaired accounts have
+equal 12-month and lifetime ECL *by design* — the loss does not grow with the
+horizon because the event causing it has already happened — and another test in
+the same file asserts exactly that. The fix was to exclude Stage 3 explicitly
+and say why in the query.
+
+### 7.8 What is still missing
+
+- **No forward-looking macro overlay.** IFRS 9 requires ECL to reflect expected
+  future conditions, usually via several macroeconomic scenarios weighted by
+  probability. This engine is a through-the-cycle calculation on one scenario.
+  It is the largest remaining gap against the standard, and it is a modelling
+  project of its own rather than an omission to patch.
+- **No PD term structure beyond the contractual term**, which is correct for a
+  term loan and would be the hard question for a revolving product.
+- **LGD is not discounted**, carried forward from §6.6.
