@@ -2,7 +2,7 @@
 -- Data quality checks on the mart, as SQL
 -- =============================================================================
 -- Each row of the result is one check: its name, how many rows failed it, and
--- whether it passed. Written as SQL rather than Python on purpose — these are
+-- whether it passed. Written as SQL rather than Python on purpose, these are
 -- assertions about the WAREHOUSE, and someone reviewing the mart should be
 -- able to read and rerun them without a Python environment.
 --
@@ -42,7 +42,7 @@ orphan_dates AS (
     WHERE d.date_key IS NULL
 ),
 series_gaps AS (
-    -- Every account's months_on_book must run 0, 1, 2, ... with no holes.
+    -- Every account's months_on_book must run 0, 1, 2... with no holes.
     -- Comparing the span to the row count catches a gap without needing a
     -- self-join: if they differ, a month is missing.
     SELECT COUNT(*) AS failures FROM (

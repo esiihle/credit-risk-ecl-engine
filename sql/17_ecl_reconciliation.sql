@@ -1,5 +1,5 @@
 -- =============================================================================
--- ecl_reconciliation — is the ECL ARITHMETIC right?
+-- ecl_reconciliation, is the ECL ARITHMETIC right?
 -- =============================================================================
 -- A separate question from "is the ECL accurate", and the two were conflated by
 -- a single 2% tolerance until Phase 6 pulled them apart.
@@ -9,10 +9,10 @@
 -- relative error on lifetime PD and Phase 5's permits 2pp on LGD. A correctly
 -- formed ECL sum over inputs carrying 6% PD error therefore CANNOT be within
 -- 2% of truth, and demanding that it be was not a gate on this phase's work at
--- all — it was a second, 7.5x stricter, implicit gate on Phase 4's.
+-- all, it was a second, 7.5x stricter, implicit gate on Phase 4's.
 --
--- Worse, it fails in both directions. A sum formed WRONGLY — cumulative PD
--- instead of marginal, the wrong horizon for a stage, no discounting — can
+-- Worse, it fails in both directions. A sum formed WRONGLY, cumulative PD
+-- instead of marginal, the wrong horizon for a stage, no discounting, can
 -- still land within a few percent on a short book and pass.
 --
 -- So this file feeds the engine's own ECL expression the EXACT inputs from

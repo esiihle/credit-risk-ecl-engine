@@ -1,8 +1,8 @@
 -- =============================================================================
--- ead_schedule — exposure at default, for every account and every future month
+-- ead_schedule, exposure at default, for every account and every future month
 -- =============================================================================
 -- ECL discounts an expected loss in each future month, so it needs the exposure
--- the account would carry IF it defaulted in that month — not the exposure it
+-- the account would carry IF it defaulted in that month, not the exposure it
 -- carries today.
 --
 -- For a fixed-term amortising loan this is arithmetic rather than a model:
@@ -17,7 +17,7 @@
 --
 -- On a term loan the borrower cannot increase their exposure: the schedule is
 -- contractual and the balance only falls. On a credit card or an overdraft it
--- is the hard input — exposure at default depends on how much of an undrawn
+-- is the hard input, exposure at default depends on how much of an undrawn
 -- limit a distressed borrower draws down before defaulting, which needs a
 -- credit conversion factor, which is itself a model with its own data problem.
 --

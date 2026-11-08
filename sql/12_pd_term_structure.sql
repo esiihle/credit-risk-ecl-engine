@@ -1,5 +1,5 @@
 -- =============================================================================
--- pd_term_structure — PD curves that know the account's segment AND its age
+-- pd_term_structure, PD curves that know the account's segment AND its age
 -- =============================================================================
 -- Phase 3's `pd_curve` propagated ONE pooled matrix. That matrix is an average
 -- over segments and over ages, so the curve it produces describes no actual

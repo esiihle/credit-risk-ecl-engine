@@ -1,12 +1,12 @@
 """
-Phase 1 — building the data mart.
+Phase 1, building the data mart.
 
 Thin on purpose. The modelling lives in `sql/`, as SQL, because that is the
 artefact this project exists to show: a credit risk analyst reviewing it should
 be able to read the mart without reading Python, and Phase 8 ports those same
 files to SAS `PROC SQL`.
 
-What is here is orchestration — running the files in dependency order — and the
+What is here is orchestration, running the files in dependency order, and the
 quality report, which turns the SQL assertions into a pass/fail a human reads.
 """
 from pathlib import Path
@@ -84,7 +84,7 @@ def format_quality(checks):
     lines = ["Mart quality", "-" * 12]
     for row in checks.itertuples(index=False):
         mark = "PASS" if row.passed else "FAIL"
-        detail = "" if row.passed else f"   ({row.failures:,} rows)"
+        detail = "" if row.passed else f"   ({row.failures: } rows)"
         lines.append(f"  [{mark}] {row.check_name}{detail}")
 
     failed = checks[~checks["passed"]]
@@ -92,7 +92,7 @@ def format_quality(checks):
     if len(failed) == 0:
         lines.append(f"  all {len(checks)} checks passed")
     else:
-        lines.append(f"  {len(failed)} of {len(checks)} checks FAILED — the mart "
+        lines.append(f"  {len(failed)} of {len(checks)} checks FAILED, the mart "
                      "is not trustworthy and nothing downstream should run")
     return "\n".join(lines)
 

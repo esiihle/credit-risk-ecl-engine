@@ -1,5 +1,5 @@
 """
-Phase 1 tests — the data mart.
+Phase 1 tests, the data mart.
 
 The headline is `test_every_quality_check_can_actually_fail`. A suite of checks
 that all pass tells you nothing unless you know they are capable of failing: a
@@ -96,7 +96,7 @@ def test_months_on_book_recomputed_from_dimensions_matches_the_source(built):
     """The fact derives months on book from the calendar, not from the source.
 
     If the generator and dim_date ever disagreed about what month a date falls
-    in, this is where it would surface — which is the reason to recompute it
+    in, this is where it would surface, which is the reason to recompute it
     rather than carry it through.
     """
     connection, _ = built
@@ -166,7 +166,7 @@ def test_dim_account_is_one_row_per_account(built):
 
 def test_every_account_falls_in_exactly_one_band(built):
     """Bands are CASE expressions, and a gap between two branches sends a row
-    to NULL — where it vanishes from every grouped report."""
+    to NULL, where it vanishes from every grouped report."""
     connection, _ = built
     nulls = db.read_sql(connection, """
         SELECT COUNT(*) AS n FROM dim_account
@@ -208,7 +208,7 @@ def test_balance_is_semi_additive(built):
     """, reporting_date=str(config["portfolio"]["reporting_date"])).iloc[0]
 
     assert totals["across_all_months"] > totals["at_a_point_in_time"] * 5, (
-        "the across-months sum should be very much larger — if it is not, the "
+        "the across-months sum should be very much larger, if it is not, the "
         "fact table may not hold the history it is supposed to"
     )
 
@@ -237,7 +237,7 @@ def test_every_quality_check_can_actually_fail(config, tmp_path):
 
     A suite in which everything passes is worth nothing unless the checks are
     capable of failing. A check with a typo in its predicate passes on every
-    book ever written and is indistinguishable from one that works — until the
+    book ever written and is indistinguishable from one that works, until the
     day it was supposed to catch something.
 
     Each corruption below is the realistic version of the bug: a duplicated
@@ -311,7 +311,7 @@ def test_every_quality_check_can_actually_fail(config, tmp_path):
         connection = fresh_mart(check_name.replace(" ", "_"))
 
         assert failures_for(connection, check_name) == 0, (
-            f"'{check_name}' failed on a clean mart — the check itself is wrong"
+            f"'{check_name}' failed on a clean mart, the check itself is wrong"
         )
 
         connection.execute(corruption).fetchall()

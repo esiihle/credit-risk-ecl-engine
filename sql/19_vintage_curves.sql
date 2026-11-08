@@ -1,5 +1,5 @@
 -- =============================================================================
--- vintage_curves — the vintage triangle
+-- vintage_curves, the vintage triangle
 -- =============================================================================
 -- The oldest technique in consumer credit MI, and still the first thing a
 -- credit committee asks for: group accounts by the month they were originated
@@ -8,7 +8,7 @@
 -- The point is to separate two things that calendar-time reporting mixes
 -- together. A book's overall arrears rate moves when lending quality changes
 -- AND when the book's age profile changes, and those call for opposite
--- responses — tighten the credit policy, or do nothing because last year's
+-- responses: tighten the credit policy, or do nothing because last year's
 -- growth is simply maturing. Holding age fixed is what makes cohorts
 -- comparable at all.
 --
@@ -51,7 +51,7 @@
 -- have left rather than because risk has fallen, so the curve answers "what
 -- fraction of this cohort ever defaulted by age t" and not "what is the hazard
 -- at age t". Cross-cohort comparison stays valid because term mix is drawn
--- independently of origination month — the cohorts differ in nothing but noise.
+-- independently of origination month, the cohorts differ in nothing but noise.
 --
 -- GRAIN: one row per (vintage, age in months). Censored cells are present and
 -- flagged rather than absent, so a consumer cannot silently miss them.
@@ -78,7 +78,7 @@ watched AS (
 ),
 first_default AS (
     -- The age at which each account defaulted, once. Default is absorbing, so
-    -- MIN is a formality — but taking it explicitly means a future change that
+    -- MIN is a formality, but taking it explicitly means a future change that
     -- let accounts re-default could not silently double-count them.
     SELECT a.account_id,
            a.vintage_month,
@@ -126,7 +126,7 @@ SELECT
                                                             AS cumulative_default_rate,
 
     -- The honesty column. TRUE means this cohort has not lived this long yet,
-    -- so the rate beside it is not a measurement — it is the last thing known
+    -- so the rate beside it is not a measurement, it is the last thing known
     -- about the cohort, carried forward.
     age > watched_to_age                                    AS is_censored,
 

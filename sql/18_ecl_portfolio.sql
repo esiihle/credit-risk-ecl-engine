@@ -1,5 +1,5 @@
 -- =============================================================================
--- ecl_portfolio — the provision as a credit committee would read it
+-- ecl_portfolio, the provision as a credit committee would read it
 -- =============================================================================
 -- Per-account ECL is the engine's output. A coverage ratio by stage is what
 -- anyone actually looks at, because it is the number that has to be explained
@@ -17,7 +17,7 @@
 -- stage, so the size of that jump is a measurable property of this book rather
 -- than a point of theory. `cliff_multiple` below is, for the accounts actually
 -- in Stage 2, what their provision is as a multiple of what it would have been
--- had they stayed in Stage 1 — the same accounts, the same credit quality, the
+-- had they stayed in Stage 1, the same accounts, the same credit quality, the
 -- same month, counted two ways.
 --
 -- GRAIN: one row per (stage, segment), plus rollup rows. `grouping_level` says

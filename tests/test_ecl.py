@@ -1,5 +1,5 @@
 """
-Phase 6 tests — the ECL calculation.
+Phase 6 tests, the ECL calculation.
 
 The headline is `test_the_arithmetic_reproduces_the_key_on_exact_inputs`. Every
 earlier phase checked an ESTIMATE against the truth and had to allow a
@@ -10,7 +10,7 @@ floating point. Nothing about Phase 4's or Phase 5's accuracy enters that.
 
 `test_the_answer_key_provisions_credit_impaired_accounts` guards the bug this
 phase found. The key recorded all 61 credit-impaired accounts at a 100%
-lifetime PD and an ECL of exactly zero — internally contradictory, and in the
+lifetime PD and an ECL of exactly zero, internally contradictory, and in the
 one direction an ECL engine must never be wrong in.
 
 `test_using_cumulative_pd_would_overstate_the_provision` is the test that makes
@@ -118,7 +118,7 @@ def test_using_cumulative_pd_would_overstate_the_provision(built):
     A check that cannot fail proves nothing, so the most natural wrong
     implementation is built here and shown to produce a materially different
     answer. Summing `cumulative_pd(t) x LGD x EAD(t) x discount(t)` counts the
-    same default once in every month after it occurs, so it overstates badly —
+    same default once in every month after it occurs, so it overstates badly,
     and it is an easy mistake to make, because `pd_term_structure` offers both
     columns side by side and the cumulative one is the figure quoted everywhere
     else in the project.
@@ -141,7 +141,7 @@ def test_using_cumulative_pd_would_overstate_the_provision(built):
 
     overstatement = comparison["done_wrong"] / comparison["done_right"]
     assert overstatement > 3.0, (
-        f"using cumulative PD overstates by only {overstatement:.2f}x — if "
+        f"using cumulative PD overstates by only {overstatement:.2f}x, if "
         f"this ever falls near 1, the exact reconciliation above has stopped "
         f"being able to tell the two implementations apart")
 
@@ -154,14 +154,14 @@ def test_the_answer_key_provisions_credit_impaired_accounts(built):
     `ground_truth` built ECL as the sum over future months of the probability
     of defaulting IN that month. Default is absorbing, so for an account
     already in bucket 4 every one of those increments is zero and the sum came
-    out as exactly 0.00 — while `true_pd_lifetime` for the same account came
+    out as exactly 0.00, while `true_pd_lifetime` for the same account came
     out 1.00. Sixty-one accounts, R939k of exposure, no provision behind it.
 
     The formula was right about what it computes and was being asked a question
     it does not answer. An impaired account's loss is not awaited in a future
     month; it is incurred, at `LGD x EAD`.
 
-    Second time the key has been valid for only part of the book — the first
+    Second time the key has been valid for only part of the book, the first
     was the same function computing every account's PD as though it were
     performing (Phase 4, `test_the_answer_key_uses_each_accounts_actual_bucket`).
     """
@@ -208,7 +208,7 @@ def test_the_monthly_schedule_agrees_with_the_account_level_key(built):
     """Pins two functions that compute the same truth by the same formulas.
 
     `true_monthly_schedule` repeats `ground_truth`'s loop at a finer grain. The
-    formulas are shared but the loops are not, so they could drift apart — and
+    formulas are shared but the loops are not, so they could drift apart, and
     if they did, the exact reconciliation above would start comparing the
     engine against something that no longer matched the key it reports against.
     """
@@ -232,7 +232,7 @@ def test_the_monthly_schedule_agrees_with_the_account_level_key(built):
 # --- The horizon is the accounting judgement -------------------------------
 
 def test_stage_1_is_twelve_months_and_stage_2_is_lifetime(built):
-    """The stage decides the horizon, and that is the whole of IFRS 9 here.
+    """The stage decides the horizon. and that is the whole of IFRS 9 here.
 
     Asserted on the reported figure rather than on the code: a Stage 1 account
     must carry its 12-month ECL and a Stage 2 account its lifetime ECL, and for
@@ -241,7 +241,7 @@ def test_stage_1_is_twelve_months_and_stage_2_is_lifetime(built):
 
     THE THRESHOLD IS 14 MONTHS, NOT 13, and the reason is worth knowing. An
     account with exactly 13 months left has its 13th month AT maturity, where
-    the amortised balance is exactly zero — so no loss can arise in it and
+    the amortised balance is exactly zero, so no loss can arise in it and
     `ecl_lifetime` equals `ecl_12m` to the cent, correctly. The first version of
     this test used `months_remaining > 12` and failed on 179 such accounts,
     reporting correct arithmetic as a missing horizon. The engine was right and
@@ -309,7 +309,7 @@ def test_the_staging_cliff_shrinks_as_arrears_deepen(built):
 def test_discounting_reduces_the_provision_and_uses_the_eir(built):
     """IFRS 9 discounts at the asset's effective interest rate.
 
-    Two claims. That discounting happens at all — an undiscounted sum would be
+    Two claims. That discounting happens at all, an undiscounted sum would be
     larger, and silently so. And that the rate is the EIR rather than anything
     else, which is checked against `dim_account.annual_rate` directly because
     using one rate to build the amortisation schedule and another to discount
@@ -435,7 +435,7 @@ def test_the_arithmetic_gate_is_stricter_than_the_accuracy_backstop(config):
 
     A single 2% ECL tolerance was replaced by two gates: an exact reconciliation
     of the arithmetic, and a loose backstop on end-to-end accuracy. The defence
-    for changing a threshold after seeing a result is that the FORM was wrong —
+    for changing a threshold after seeing a result is that the FORM was wrong,
     so the replacement has to actually be stricter on this phase's own work,
     not merely looser overall.
 
@@ -448,7 +448,7 @@ def test_the_arithmetic_gate_is_stricter_than_the_accuracy_backstop(config):
     backstop = float(limits["max_ecl_relative_error"])
 
     # A cent per account, across even a small book, is a vanishing share of the
-    # provision — orders of magnitude tighter than the backstop.
+    # provision, orders of magnitude tighter than the backstop.
     assert residual > 0
     assert backstop > 0
     assert residual / 1_000_000.0 < backstop / 1000.0
@@ -457,7 +457,7 @@ def test_the_arithmetic_gate_is_stricter_than_the_accuracy_backstop(config):
     # from, or it is re-testing Phase 4 rather than guarding Phase 6.
     assert backstop >= float(limits["max_lifetime_pd_relative_error"]), (
         "an ECL tolerance tighter than the PD tolerance feeding it cannot be "
-        "met by correct code — see methodology §7.3")
+        "met by correct code; see methodology §7.3")
 
 
 # --- Assessability propagates downstream ------------------------------------
@@ -538,12 +538,12 @@ def test_a_book_whose_inputs_are_assessable_is_actually_judged(built):
     """The other half, so the exemption cannot become an escape hatch.
 
     If assessability never resolved to true, the backstop would be a gate that
-    never fires — indistinguishable from having no gate.
+    never fires, indistinguishable from having no gate.
     """
     connection, sized = built
     upstream = ecl.inputs_were_assessable(connection, sized)
     assert upstream["assessable"], (
-        f"a {sized['portfolio']['n_accounts']:,}-account book should support "
+        f"a {sized['portfolio']['n_accounts']: }-account book should support "
         f"the accuracy backstop; upstream said {upstream}")
 
     checks, _ = ecl.validate(connection, sized)
@@ -555,7 +555,7 @@ def test_a_book_whose_inputs_are_assessable_is_actually_judged(built):
 def test_assessability_is_decided_upstream_not_from_the_ecl_error(config):
     """The decision must not be able to see the result it would be excusing.
 
-    Same discipline as Phase 5's precision gate, and asserted the same way —
+    Same discipline as Phase 5's precision gate, and asserted the same way,
     against the source text, because this is a claim about the order of the
     reasoning that no input can demonstrate.
 
@@ -566,7 +566,7 @@ def test_assessability_is_decided_upstream_not_from_the_ecl_error(config):
     source = inspect.getsource(ecl.inputs_were_assessable)
     for forbidden in ("relative_error", "ecl_portfolio", "arithmetic_residuals"):
         assert forbidden not in source, (
-            f"inputs_were_assessable reads {forbidden} — the decision can now "
+            f"inputs_were_assessable reads {forbidden}, the decision can now "
             f"see the result it would be excusing")
 
     # And in validate(), the verdict is taken before the error is read.

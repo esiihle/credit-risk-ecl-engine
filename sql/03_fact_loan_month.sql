@@ -1,5 +1,5 @@
 -- =============================================================================
--- fact_loan_month — the fact table
+-- fact_loan_month, the fact table
 -- =============================================================================
 -- GRAIN, stated once and enforced by a test:
 --
@@ -9,10 +9,10 @@
 -- This is a PERIODIC SNAPSHOT fact table, not a transaction fact. The
 -- distinction decides how it behaves:
 --
---   * a transaction fact records events — a payment, a drawdown — and rows
+--   * a transaction fact records events, a payment, a drawdown, and rows
 --     appear only when something happens
 --   * a periodic snapshot records STATE at regular intervals, whether or not
---     anything happened, and that is what provisioning needs: the question is
+--     anything happened. and that is what provisioning needs: the question is
 --     always "what did the book look like at month end", never "what happened
 --     in between"
 --
@@ -20,11 +20,11 @@
 -- row. A gap in an account's monthly series is therefore a DEFECT, not an
 -- absence of events, and `04_mart_quality.sql` looks for exactly that.
 --
--- ADDITIVITY — the thing most often got wrong:
+-- ADDITIVITY, the thing most often got wrong:
 --
 --   * `scheduled_balance` is SEMI-ADDITIVE. Summing it across accounts at one
 --     month end gives the book's exposure, which is meaningful. Summing it
---     across months gives a number with no interpretation at all — an account
+--     across months gives a number with no interpretation at all, an account
 --     owing 10,000 for twelve months did not owe 120,000.
 --   * `is_default` and `is_new_default` are additive across accounts; only the
 --     second is additive across time, because the first counts the same

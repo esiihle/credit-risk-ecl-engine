@@ -1,15 +1,15 @@
 -- =============================================================================
--- dim_account — one row per loan, as it was at origination
+-- dim_account, one row per loan, as it was at origination
 -- =============================================================================
 -- GRAIN: one row per account_id.
 --
--- This is a slowly changing dimension of type 1 — attributes are overwritten,
+-- This is a slowly changing dimension of type 1, attributes are overwritten,
 -- no history is kept. That is correct HERE because every attribute in it is
 -- fixed at origination and never changes: the principal advanced, the
 -- contractual term, the rate, the segment the applicant was scored into.
 --
--- If this book later gained attributes that DO change over time — a refreshed
--- behavioural score, a repriced rate — those belong either in the fact table
+-- If this book later gained attributes that DO change over time, a refreshed
+-- behavioural score, a repriced rate, those belong either in the fact table
 -- (if they change monthly) or in a type-2 dimension with effective dates. Type
 -- 1 on a changing attribute silently rewrites history, and a provision
 -- restated because a dimension was overwritten is a finding an auditor does

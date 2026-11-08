@@ -1,5 +1,5 @@
 """
-Phase 2 — delinquency transitions and roll rates.
+Phase 2, delinquency transitions and roll rates.
 
 This is the first phase where the engine ESTIMATES something the answer key
 already knows. Everything before it was plumbing; from here on, each number has
@@ -7,7 +7,7 @@ a true value it can be checked against.
 
 The estimate: a transition matrix counted from 500,000 observed account-months.
 The truth: the matrix those months were drawn from. The two are produced by
-completely unrelated routes, so agreement is evidence rather than restatement —
+completely unrelated routes, so agreement is evidence rather than restatement,
 and `compare_to_truth` below is where they meet.
 
 What is in SQL and what is here, and why:
@@ -15,7 +15,7 @@ What is in SQL and what is here, and why:
 * the transitions, the matrices and the cuts are SQL, under `sql/`, because
   they are the artefact a credit risk reviewer reads and Phase 8 ports to SAS
 * the comparison against the generator's matrix is Python, because it needs the
-  generator — and because it is VALIDATION, not production logic. The engine
+  generator, and because it is VALIDATION, not production logic. The engine
   must never read the true columns; the validation reads them, and keeping that
   boundary visible is the point of putting it in a separate module.
 """
@@ -56,7 +56,7 @@ def matrix(connection, cut_type=None, cut_value=None):
     """The transition matrix as a square frame, rows summing to 1.
 
     Pivoted here rather than in SQL because a matrix is a presentation of the
-    long table, not a different fact — and because an absorbing state has no
+    long table, not a different fact, and because an absorbing state has no
     outgoing rows at all, so the pivot needs filling with explicit zeros rather
     than leaving holes a reader has to interpret.
     """
@@ -84,12 +84,12 @@ def expected_pooled_matrix(connection, config):
 
     This is the only like-for-like comparison available for a pooled empirical
     matrix. The true matrix varies by segment and by month on book, so no single
-    true matrix exists to compare against — but every observed transition had
+    true matrix exists to compare against, but every observed transition had
     one, and averaging them with the weights the data actually carries gives the
     quantity the pooled estimate is estimating.
 
-    Getting this wrong in the obvious way — comparing the pooled estimate
-    against the base rates in config — would show a discrepancy of several
+    Getting this wrong in the obvious way, comparing the pooled estimate
+    against the base rates in config, would show a discrepancy of several
     percentage points and look like a bug in the estimation. It would in fact be
     a bug in the comparison: the base rates are what a near-prime account at the
     seasoning peak experiences, not what the book averages.
@@ -169,7 +169,7 @@ def censoring_bias(connection):
     The naive roll rate divides moves to bucket j by the number of ROWS in
     bucket i, rather than by the number of rows whose successor was observed.
     Every account's final month has no successor, so the naive denominator is
-    too large and every rate is biased toward zero — with the fake mass landing
+    too large and every rate is biased toward zero, with the fake mass landing
     on the diagonal, since a missing move reads as "nothing happened".
 
     Quantified here rather than asserted, because "a small bias" and "a bias

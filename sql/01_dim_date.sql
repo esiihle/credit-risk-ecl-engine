@@ -1,13 +1,13 @@
 -- =============================================================================
--- dim_date — the calendar dimension, at MONTH-END grain
+-- dim_date, the calendar dimension, at MONTH-END grain
 -- =============================================================================
 -- Why a date dimension at all, when every fact row already carries a date?
 --
 -- Because "group by quarter", "compare to the same month last year" and "was
 -- this a year end?" are questions about the CALENDAR, not about loans. Putting
 -- those attributes in a dimension means they are defined once, consistently,
--- and every report that joins to it agrees. The alternative — deriving them in
--- each query — is how two reports end up disagreeing about which quarter
+-- and every report that joins to it agrees. The alternative, deriving them in
+-- each query, is how two reports end up disagreeing about which quarter
 -- December belongs to.
 --
 -- GRAIN: one row per calendar month end.
@@ -16,7 +16,7 @@
 -- arrears and provisions are all struck at the close of a reporting month.
 --
 -- A note on building the series. Adding one month repeatedly to 31 January
--- lands on 28 February and then stays at the 28th — the drift is silent and
+-- lands on 28 February and then stays at the 28th, the drift is silent and
 -- would corrupt every join downstream. Generating month STARTS and taking
 -- last_day() of each is immune to it.
 -- =============================================================================
@@ -46,7 +46,7 @@ SELECT
     strftime(month_end_date, '%Y-%m')                       AS year_month,
 
     -- A monotonic month counter. Differences between two of these give a span
-    -- in months directly, with no date arithmetic and no leap-year thinking —
+    -- in months directly, with no date arithmetic and no leap-year thinking,
     -- which is what makes "months on book" and vintage offsets trivial later.
     CAST(year(month_end_date) * 12 + month(month_end_date) AS INTEGER)
                                                             AS month_index,

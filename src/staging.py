@@ -1,10 +1,10 @@
 """
-Phase 3 — IFRS 9 staging.
+Phase 3, IFRS 9 staging.
 
 The accounting judgement of the project. Stage 1 carries a twelve-month
 expected loss; Stages 2 and 3 carry a lifetime one. On a 48-month loan that
 substitution can multiply the provision several times over for an account whose
-circumstances have barely changed — **staging moves the provision more than the
+circumstances have barely changed, **staging moves the provision more than the
 PD model does**, which is why every rule is config and every trigger is recorded
 by name.
 
@@ -12,7 +12,7 @@ What is in SQL: the PD curve (a recursive CTE doing matrix exponentiation), the
 stage assignment with its triggers and probation rule, and the migration matrix.
 
 What is here: orchestration, the reporting, and the analysis of which triggers
-actually bind — which turned out to be the most interesting thing in the phase.
+actually bind, which turned out to be the most interesting thing in the phase.
 """
 from pathlib import Path
 
@@ -24,9 +24,9 @@ from . import db, generate
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 STAGE_NAMES = {
-    1: "Stage 1 — performing (12-month ECL)",
-    2: "Stage 2 — significant increase (lifetime ECL)",
-    3: "Stage 3 — credit-impaired (lifetime ECL)",
+    1: "Stage 1, performing (12-month ECL)",
+    2: "Stage 2, significant increase (lifetime ECL)",
+    3: "Stage 3, credit-impaired (lifetime ECL)",
 }
 
 
@@ -39,7 +39,7 @@ def build(connection, config, verbose=True):
     staging = config["staging"]
 
     # The curve must reach the longest contractual term, or an account's
-    # lifetime PD would join to nothing and silently read as zero — which would
+    # lifetime PD would join to nothing and silently read as zero, which would
     # stage a long-dated account as performing no matter how bad it got.
     longest = db.read_sql(
         connection, "SELECT MAX(term_months) AS longest FROM dim_account"
@@ -91,7 +91,7 @@ def trigger_analysis(connection):
 
     A trigger that never fires on its own is not a control, it is a line in a
     policy document. This counts, for each trigger, the account-months where it
-    fired AND no stronger trigger already had — which is the only measure of
+    fired AND no stronger trigger already had, which is the only measure of
     what a trigger contributes.
     """
     return db.read_sql(connection, """
@@ -224,7 +224,7 @@ def staging_report(connection, config):
     lines.append("-" * 14)
     for row in checks.itertuples(index=False):
         mark = "PASS" if row.passed else "FAIL"
-        detail = "" if row.passed else f"   ({row.failures:,})"
+        detail = "" if row.passed else f"   ({row.failures: })"
         lines.append(f"  [{mark}] {row.check}{detail}")
 
     # --- which triggers actually bind ---------------------------------------

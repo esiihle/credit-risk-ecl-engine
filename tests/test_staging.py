@@ -1,5 +1,5 @@
 """
-Phase 3 tests — IFRS 9 staging.
+Phase 3 tests, IFRS 9 staging.
 
 Three things are being defended here.
 
@@ -10,8 +10,8 @@ is pivoted from. Both have regression tests that demonstrate the wrong version
 really is wrong.
 
 The staging rules are accounting policy. The tests assert the invariants an
-auditor would check — every account in exactly one stage, nothing 90+ outside
-Stage 3, nothing 30+ in Stage 1 — and that probation actually delays a return.
+auditor would check, every account in exactly one stage, nothing 90+ outside
+Stage 3, nothing 30+ in Stage 1, and that probation actually delays a return.
 
 The trigger analysis pins a finding rather than a behaviour: the relative PD
 test binds only on short-dated loans, for a structural reason that would
@@ -64,7 +64,7 @@ def built(config, tmp_path_factory):
 def test_the_sql_curve_matches_a_python_matrix_power(built):
     """The recursive CTE must reproduce repeated matrix multiplication.
 
-    Same input matrix, two implementations — one SQL, one numpy. This is the
+    Same input matrix, two implementations, one SQL, one numpy. This is the
     test that would catch an arithmetic slip in the 25-term state update, where
     a single transposed subscript gives a curve that still rises smoothly and
     still looks like a PD curve.
@@ -74,7 +74,7 @@ def test_the_sql_curve_matches_a_python_matrix_power(built):
     empirical = rollrate.matrix(connection).to_numpy()
     # The absorbing row is absent from observed data; the SQL asserts the
     # identity row, so the comparison must too.
-    empirical[generate.DEFAULT_BUCKET, :] = 0.0
+    empirical[generate.DEFAULT_BUCKET:] = 0.0
     empirical[generate.DEFAULT_BUCKET, generate.DEFAULT_BUCKET] = 1.0
 
     for start_bucket in range(generate.N_BUCKETS):
@@ -100,7 +100,7 @@ def test_the_sql_curve_matches_a_python_matrix_power(built):
 def test_decimal_truncation_in_the_anchor_would_break_the_curve():
     """The bug the `::DOUBLE` casts exist to prevent, demonstrated.
 
-    `1.0` in SQL is DECIMAL(2,1) — one decimal place. The type propagates
+    `1.0` in SQL is DECIMAL(2,1), one decimal place. The type propagates
     through every iteration of a recursive CTE, so each step rounds to a tenth
     and the state vector freezes. The output is a set of entirely valid-looking
     probabilities that is completely wrong, with no error raised.
@@ -136,7 +136,7 @@ def test_decimal_truncation_in_the_anchor_would_break_the_curve():
     # The truncated version sticks after one step; the typed one keeps moving.
     assert untyped_values[1] == untyped_values[4], (
         "DuckDB no longer truncates undeclared decimal literals in a recursive "
-        "CTE — check whether the ::DOUBLE casts are still required before "
+        "CTE, check whether the ::DOUBLE casts are still required before "
         "relaxing this test"
     )
     assert typed_values[1] != typed_values[4]
@@ -219,7 +219,7 @@ def test_probation_delays_the_return_to_stage_1(built):
     difference between a 12-month and a lifetime loss each time.
 
     This asserts both halves: nobody returns too early, and somebody is
-    actually being held — a probation rule that never binds is not a rule.
+    actually being held, a probation rule that never binds is not a rule.
     """
     connection, config = built
     probation_months = int(config["staging"]["probation_months"])
@@ -266,7 +266,7 @@ def test_the_relative_pd_trigger_binds_only_on_short_dated_loans(built):
     what it does contribute is concentrated entirely at the short end.
 
     If a future change makes the trigger fire across all terms, that is either
-    a real improvement or a calibration error — and either way it should be
+    a real improvement or a calibration error, and either way it should be
     noticed rather than absorbed silently.
     """
     connection, _ = built

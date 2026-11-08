@@ -1,12 +1,12 @@
 -- =============================================================================
--- lgd_estimate — loss given default, estimated from observed recoveries
+-- lgd_estimate, loss given default, estimated from observed recoveries
 -- =============================================================================
 -- LGD is the one genuinely uncertain input in this engine. Exposure is
 -- arithmetic. PD is estimated from half a million observed transitions. LGD
 -- rests on a few hundred defaults, each of which takes a year to resolve.
 --
 -- -----------------------------------------------------------------------------
--- THE WORKOUT CENSORING TRAP — the central idea of this phase
+-- THE WORKOUT CENSORING TRAP, the central idea of this phase
 -- -----------------------------------------------------------------------------
 -- An account that defaulted last month has barely begun its collections
 -- workout. One that defaulted three years ago is finished. Both sit in the
@@ -24,7 +24,7 @@
 -- bias runs one way.
 --
 -- So the estimate uses COMPLETE workouts only. Incomplete ones are counted and
--- reported — they are the exposure the estimate cannot speak for — but they do
+-- reported, they are the exposure the estimate cannot speak for, but they do
 -- not enter the average.
 --
 -- The cost is sample size, and on a book this size the cost is real: excluding

@@ -1,5 +1,5 @@
 -- =============================================================================
--- account_pd — 12-month and lifetime PD for every account at the reporting date
+-- account_pd, 12-month and lifetime PD for every account at the reporting date
 -- =============================================================================
 -- The point where a curve becomes a number per account, and the input Phase 6
 -- discounts into a provision.
@@ -7,7 +7,7 @@
 -- TWO HORIZONS, because IFRS 9 needs both and the staging decides which is used:
 --
 --   pd_12m        P(default in the next 12 months). Stage 1's horizon. Capped
---                 at the remaining term — a loan with 7 months left cannot
+--                 at the remaining term, a loan with 7 months left cannot
 --                 default in month 9, and reading a 12-month PD off a curve
 --                 without that cap credits the account with risk it cannot
 --                 run.
@@ -16,7 +16,7 @@
 --
 -- THREE ESTIMATES, deliberately kept side by side rather than collapsing to the
 -- best one. Carrying all three is what makes the validation in `src/pd.py` a
--- comparison rather than an assertion — the question "is the extra
+-- comparison rather than an assertion, the question "is the extra
 -- segmentation worth it?" cannot be answered by a table that holds only the
 -- answer you already chose.
 --
@@ -26,7 +26,7 @@
 --                 walk advances.
 --
 -- The `true_` columns come from the generator's answer key. They are carried
--- here for VALIDATION ONLY and no estimate reads them — the boundary is the
+-- here for VALIDATION ONLY and no estimate reads them, the boundary is the
 -- reason the book is simulated at all.
 -- =============================================================================
 

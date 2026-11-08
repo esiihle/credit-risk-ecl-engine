@@ -49,7 +49,7 @@ def _frame(fig, ax_list, title, subtitle, stamp, wrap=118):
     THE LAYOUT TRAP THIS FUNCTION EXISTS TO AVOID. `layout="constrained"` sizes
     the axes to fill the figure, and it accounts for `fig.suptitle` but knows
     nothing about `fig.text`. Placing a subtitle and a stamp with `fig.text` at
-    fixed coordinates therefore draws them straight through the axes — which is
+    fixed coordinates therefore draws them straight through the axes, which is
     exactly what the first version of these charts did, printing the subtitle
     across the plot area and the stamp through the x-axis label.
 
@@ -58,7 +58,7 @@ def _frame(fig, ax_list, title, subtitle, stamp, wrap=118):
     are laid out inside what is left rather than on top of it.
 
     Also: never call `fig.autofmt_xdate()` here. It silently disables
-    constrained layout, which cost a sister project an afternoon.
+    constrained layout, which cost my scorecard project an afternoon.
     """
     lines = textwrap.wrap(subtitle, wrap) if subtitle else []
 
@@ -115,7 +115,7 @@ def chart_vintage_triangle(connection, stamp, output):
     common = vintage.censoring_artefact(connection)["common_age"]
     left.axvline(common, color=WARN, linewidth=1.4, linestyle="--")
     # Positioned in AXES coordinates, not data coordinates against a y-limit
-    # read before the axes were final — which put this label in the subtitle.
+    # read before the axes were final, which put this label in the subtitle.
     left.text(0.30, 0.95, f"common age: {common} months\nthe only fair comparison",
               transform=left.transAxes, color=WARN, fontsize=8.5, va="top")
     left.set_xlabel("months on book")
@@ -142,9 +142,9 @@ def chart_vintage_triangle(connection, stamp, output):
     offset = months - months.min()
 
     right.scatter(offset, frame["rate_latest"] * 100, s=16, color=WARN,
-                  label="naive — each cohort at its own latest age", zorder=3)
+                  label="naive, each cohort at its own latest age", zorder=3)
     right.scatter(offset, frame["rate_at_common_age"] * 100, s=16, color=ACCENT,
-                  label=f"fair — every cohort at {common} months", zorder=3)
+                  label=f"fair, every cohort at {common} months", zorder=3)
     for values, colour in ((frame["rate_latest"], WARN),
                            (frame["rate_at_common_age"], ACCENT)):
         slope, intercept = np.polyfit(offset, values.to_numpy(dtype=float) * 100, 1)
@@ -163,7 +163,7 @@ def chart_vintage_triangle(connection, stamp, output):
            f"per year of apparent improvement; comparing every cohort at the same age "
            f"shows {artefact['fair_slope_per_year'] * 100:+.2f}pp. "
            f"{artefact['artefact_share']:.0%} of the signal is the observation window, "
-           f"not credit quality — and the true vintage effect on this book is zero "
+           f"not credit quality, and the true vintage effect on this book is zero "
            f"by construction.", stamp)
 
     path = output / "vintage_triangle.png"
@@ -191,7 +191,7 @@ def chart_calendar_vs_cohort(connection, stamp, output):
     twin.tick_params(colors=ACCENT, labelsize=9)
     twin.spines["top"].set_visible(False)
     top.set_ylabel("in arrears (%)", color=WARN)
-    top.set_title("Calendar time: arrears doubled — and so did the book's age",
+    top.set_title("Calendar time: arrears doubled, and so did the book's age",
                   fontsize=10, color=INK, loc="left")
     handles = top.get_legend_handles_labels()[0] + twin.get_legend_handles_labels()[0]
     top.legend(handles=handles, frameon=False, fontsize=8.5, loc="upper left")
@@ -202,14 +202,14 @@ def chart_calendar_vs_cohort(connection, stamp, output):
     # only the stages under scrutiny, on a scale that fits them, is the whole
     # difference between a chart and a decoration.
     bottom.plot(x, settled["stage_2_share"] * 100, color="#c8902a", linewidth=2,
-                label="Stage 2 — lifetime ECL")
+                label="Stage 2, lifetime ECL")
     bottom.plot(x, settled["stage_3_share"] * 100, color=WARN, linewidth=2,
-                label="Stage 3 — credit-impaired")
+                label="Stage 3, credit-impaired")
     bottom.fill_between(x, 0, settled["stage_2_share"] * 100,
                         color="#e8c07a", alpha=0.25)
     bottom.set_ylim(0, max(settled["stage_2_share"].max() * 100 * 1.25, 1))
     bottom.set_ylabel("share of balance (%)")
-    bottom.set_title("Stage 2 and Stage 3 share of balance — Stage 1 is the "
+    bottom.set_title("Stage 2 and Stage 3 share of balance, Stage 1 is the "
                      "remaining 92-97% and is left out",
                      fontsize=10, color=INK, loc="left")
     bottom.legend(frameon=False, fontsize=8.5, loc="upper left", ncol=2)
@@ -222,7 +222,7 @@ def chart_calendar_vs_cohort(connection, stamp, output):
     _frame(fig, [top, bottom], "The same book, read in calendar time",
            f"Arrears rose from {drift['arrears_at_start']:.1%} to "
            f"{drift['arrears_at_end']:.1%} while average age went from "
-           f"{drift['age_at_start']:.0f} to {drift['age_at_end']:.0f} months "
+           f"{drift['age_at_start']:,.0f} to {drift['age_at_end']:,.0f} months "
            f"(correlation {drift['age_vs_arrears_correlation']:+.2f}). Cohort quality "
            f"never changed. In calendar time this looks like deterioration; in cohort "
            f"time it is maturity, and nothing on this page can tell them apart.", stamp)
@@ -271,7 +271,7 @@ def chart_ecl_and_cliff(connection, config, stamp, output):
         right.text(bucket, multiple, f"  {multiple:.2f}x", ha="center",
                    va="bottom", fontsize=9, color=INK)
     right.set_xticks(buckets)
-    right.set_xticklabels(["current", "1–29 DPD", "30–59 DPD", "60–89 DPD"])
+    right.set_xticklabels(["current", "1 to 29 DPD", "30 to 59 DPD", "60 to 89 DPD"])
     right.set_ylabel("lifetime ECL ÷ 12-month ECL\n(bar length = the jump)")
     right.set_ylim(1.0, multiples.max() * 1.10)
     right.set_title("The staging cliff, for the same accounts counted two ways",
@@ -280,9 +280,9 @@ def chart_ecl_and_cliff(connection, config, stamp, output):
     total = ecl.portfolio(connection, level="portfolio").iloc[0]
     _frame(fig, [left, right], "The provision, and the cliff inside it",
            f"Portfolio ECL {total['ecl']:,.0f} against exposure "
-           f"{total['exposure']:,.0f} — coverage {total['coverage_ratio']:.2%} on a "
+           f"{total['exposure']:,.0f}, coverage {total['coverage_ratio']:.2%} on a "
            f"{total['relative_error']:+.2%} error against the key. The cliff is "
-           f"steepest for accounts in no arrears and flat for those 60–89 days down, "
+           f"steepest for accounts in no arrears and flat for those 60 to 89 days down, "
            f"so the accounts most likely to trip SICR face the smallest jump.", stamp)
 
     path = output / "ecl_and_staging_cliff.png"
@@ -309,7 +309,7 @@ def main():
 
     if not path.exists():
         print(f"No warehouse at {path}.")
-        print("Run `python scripts/run_pipeline.py` first — the charts are drawn")
+        print("Run `python scripts/run_pipeline.py` first, the charts are drawn")
         print("from the built tables, never from numbers typed in by hand.")
         return 1
 
@@ -329,7 +329,7 @@ def main():
         print(f"{path} has no {', '.join(missing)}.")
         print()
         print("The charts are drawn from built tables, and this database holds")
-        print("only the source ones — the mart is rebuilt, never committed.")
+        print("only the source ones, the mart is rebuilt, never committed.")
         print("Build it first:")
         print(f"    python scripts/run_pipeline.py"
               f"{' --sample' if args.sample else ''}")
@@ -343,7 +343,7 @@ def main():
         accounts = db._count(connection, "dim_account")
         reporting = config["portfolio"]["reporting_date"]
         stamp = (f"credit-risk-ecl-engine · reporting date {reporting} · "
-                 f"{accounts:,} accounts · regenerate with "
+                 f"{accounts: } accounts · regenerate with "
                  f"python scripts/make_charts.py")
 
         print(f"Drawing from {path}")

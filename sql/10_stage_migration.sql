@@ -1,5 +1,5 @@
 -- =============================================================================
--- stage_migration — month-on-month movement between IFRS 9 stages
+-- stage_migration, month-on-month movement between IFRS 9 stages
 -- =============================================================================
 -- The same shape as the arrears roll rates in Phase 2, one level up: instead of
 -- buckets it tracks stages, and instead of a collections view it gives the
@@ -7,7 +7,7 @@
 --
 -- This is what a provision walk is built from. When the ECL moves between two
 -- reporting dates, the question is always "how much of that was accounts
--- migrating stage, and how much was everything else" — and the answer starts
+-- migrating stage, and how much was everything else", and the answer starts
 -- here.
 --
 -- Two measures, and they answer different questions:

@@ -66,7 +66,7 @@ def _validate(config):
     if staging.get("sicr_dpd_backstop", 30) >= staging.get("default_dpd", 90):
         raise ConfigError(
             "The SICR backstop must trigger BEFORE default, or Stage 2 can "
-            "never be reached — every account would jump from 1 to 3."
+            "never be reached, every account would jump from 1 to 3."
         )
 
 

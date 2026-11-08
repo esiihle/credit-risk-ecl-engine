@@ -1,5 +1,5 @@
 """
-Phase 0 tests — the synthetic book and its answer key.
+Phase 0 tests, the synthetic book and its answer key.
 
 The headline is `test_simulated_defaults_match_the_analytic_truth`. Everything
 this project will later claim rests on the ground truth being *true*: if the
@@ -7,8 +7,8 @@ simulator and the analytic PD disagree, then every validation downstream is
 comparing the engine against the wrong answer, and would pass or fail for
 reasons that have nothing to do with the engine.
 
-The two are computed by genuinely independent routes — one walks random paths
-through the chain, the other multiplies matrices — so agreement is evidence,
+The two are computed by genuinely independent routes, one walks random paths
+through the chain, the other multiplies matrices, so agreement is evidence,
 not a restatement.
 
 Run with:  pytest tests/test_generate.py -v
@@ -53,12 +53,12 @@ def test_default_is_absorbing(config):
     """Once 90+ days past due, an account stays there.
 
     This project's default definition. Cures out of default happen in reality
-    and are deliberately excluded — they complicate Stage 3 accounting and the
+    and are deliberately excluded, they complicate Stage 3 accounting and the
     job here is the core mechanics. Stated as a test so the choice is visible.
     """
     matrix = g.transition_matrix(1.0, 12, config)
     assert matrix[g.DEFAULT_BUCKET, g.DEFAULT_BUCKET] == 1.0
-    assert matrix[g.DEFAULT_BUCKET, :g.DEFAULT_BUCKET].sum() == 0.0
+    assert matrix[g.DEFAULT_BUCKET:g.DEFAULT_BUCKET].sum() == 0.0
 
 
 def test_riskier_segments_default_more(config):
@@ -72,7 +72,7 @@ def test_riskier_segments_default_more(config):
     # by scaling cure rates as well as worsen rates.
     assert 3 < subprime / prime < 20, (
         f"prime {prime:.2%} to subprime {subprime:.2%} is a "
-        f"{subprime / prime:.0f}x spread — no real book looks like that"
+        f"{subprime / prime:,.0f}x spread, no real book looks like that"
     )
 
 
@@ -109,7 +109,7 @@ def test_simulated_defaults_match_the_analytic_truth(config):
 
     Two independent routes to the same quantity: the simulator draws from the
     transition matrix month by month, while `analytic_pd` multiplies matrices.
-    If they disagree, one of them is wrong — and since every later validation
+    If they disagree, one of them is wrong, and since every later validation
     in this project compares the engine against the analytic value, a wrong
     answer key would make those validations meaningless while still passing.
 
@@ -121,7 +121,7 @@ def test_simulated_defaults_match_the_analytic_truth(config):
     test_config["portfolio"] = dict(config["portfolio"])
     test_config["portfolio"]["n_accounts"] = 6000
     # Originate everyone on one date so every account is observed for the same
-    # window — otherwise the realised rate mixes accounts with different
+    # window, otherwise the realised rate mixes accounts with different
     # amounts of exposure and is not comparable to a 12-month PD.
     test_config["portfolio"]["origination_start"] = "2023-12-31"
     test_config["portfolio"]["origination_end"] = "2023-12-31"

@@ -1,5 +1,5 @@
 -- =============================================================================
--- pd_curve — cumulative probability of default, by starting bucket and horizon
+-- pd_curve, cumulative probability of default, by starting bucket and horizon
 -- =============================================================================
 -- Propagates the Phase 2 transition matrix forward, month by month, using a
 -- RECURSIVE CTE. The state vector (p0..p4) is multiplied by the matrix at each
@@ -7,7 +7,7 @@
 -- P(default within k months | started in bucket s).
 --
 -- This is matrix exponentiation written in SQL, and it is the empirical
--- counterpart of `generate.cumulative_pd_curve` — which does the same thing in
+-- counterpart of `generate.cumulative_pd_curve`, which does the same thing in
 -- Python from the matrix the book was generated from. The two meet in
 -- `tests/test_staging.py`.
 --
@@ -17,7 +17,7 @@
 --
 -- 1. DECIMAL TRUNCATION IN THE ANCHOR.
 --
---    Writing `1.0 AS p0` in the anchor gives DECIMAL(2,1) — ONE decimal place.
+--    Writing `1.0 AS p0` in the anchor gives DECIMAL(2,1), ONE decimal place.
 --    The type propagates through every iteration, so each step rounds to a
 --    tenth, and the state vector sticks at (0.9, 0.1) forever. The output is a
 --    set of perfectly valid-looking probabilities that is completely wrong,
@@ -28,13 +28,13 @@
 -- 2. THE ABSORBING ROW IS ABSENT FROM THE DATA.
 --
 --    `roll_rate` is built from OBSERVED transitions, and nothing is ever
---    observed leaving default — it is absorbing, so there are no such rows.
+--    observed leaving default, it is absorbing, so there are no such rows.
 --    Pivoting therefore yields NULL for the whole bucket-4 row, including its
 --    diagonal.
 --
 --    Coalescing those NULLs to zero would mean an account that defaults is
 --    multiplied by a row of zeros at the next step and its probability mass
---    VANISHES. Cumulative PD would then stop rising and could even fall — and
+--    VANISHES. Cumulative PD would then stop rising and could even fall, and
 --    PD curves that plateau look superficially reasonable.
 --
 --    The absorbing row must be supplied as the identity row: m44 = 1. That is
@@ -71,7 +71,7 @@ matrix AS (
         COALESCE(MAX(CASE WHEN from_bucket=3 AND to_bucket=4 THEN rate END), 0.0)::DOUBLE AS m34,
 
         -- Bucket 4 is absorbing. No transition out of it is ever observed, so
-        -- these cannot come from the data — the identity row is asserted.
+        -- these cannot come from the data, the identity row is asserted.
         0.0::DOUBLE AS m40,
         0.0::DOUBLE AS m41,
         0.0::DOUBLE AS m42,

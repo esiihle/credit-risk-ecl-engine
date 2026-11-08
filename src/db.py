@@ -5,7 +5,7 @@ Why DuckDB: it is a real analytical SQL engine that lives in a single file with
 no server. Anyone can clone this repository and run the whole thing with one
 command, which is the difference between a portfolio project someone can
 evaluate and one they take on trust. The SQL is Postgres-flavoured, so almost
-all of it ports to a bank's warehouse unchanged — and Phase 8 ports it to SAS
+all of it ports to a bank's warehouse unchanged, and Phase 8 ports it to SAS
 PROC SQL and reconciles the two.
 
 Everything here is deliberately thin. The engine's logic belongs in SQL under
@@ -24,11 +24,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CORE_TABLES = {
     "accounts": "one row per loan, fixed at origination",
     "loan_month": "the fact table: one row per account per month on book",
-    "ground_truth": "the answer key — true PD, EAD and ECL, known because the "
+    "ground_truth": "the answer key, true PD, EAD and ECL, known because the "
                     "book is simulated",
     "recovery": "one row per default event: exposure at default and what "
                 "collections has recovered so far",
-    "ground_truth_monthly": "the answer key at the ECL sum's own grain — true "
+    "ground_truth_monthly": "the answer key at the ECL sum's own grain, true "
                             "marginal PD, exposure and discount per account-month",
 }
 
@@ -45,7 +45,7 @@ def connect(config, path=None, read_only=False):
     config : dict
         Reads `data.database`.
     path : str | Path | None
-        Overrides the configured location — used by tests, which must never
+        Overrides the configured location, used by tests, which must never
         touch the working database.
     read_only : bool
         Open without the ability to write. Worth using in reporting code: a
@@ -66,8 +66,8 @@ def connect(config, path=None, read_only=False):
 def write_table(connection, name, frame, replace=True, allow_empty=False):
     """Write a dataframe as a table.
 
-    `replace=True` by default because every table here is derived — rebuilt
-    from the generator or from SQL — so an append would silently double a book.
+    `replace=True` by default because every table here is derived, rebuilt
+    from the generator or from SQL, so an append would silently double a book.
 
     An empty frame is refused unless `allow_empty` says emptiness is a
     legitimate state for this table. Almost always it is not: an empty table is
@@ -75,8 +75,8 @@ def write_table(connection, name, frame, replace=True, allow_empty=False):
     later when the symptom is a missing row rather than a missing table.
 
     `recovery` is the exception the flag exists for. A book small enough to
-    produce no defaults has no recoveries, and that is correct rather than
-    broken — but the table still has to exist, because a MISSING table and an
+    produce no defaults has no recoveries. and that is correct rather than
+    broken, but the table still has to exist, because a MISSING table and an
     EMPTY one fail very differently downstream: the first takes out the whole
     query with a catalog error, the second flows through as a zero.
     """
@@ -90,7 +90,7 @@ def write_table(connection, name, frame, replace=True, allow_empty=False):
 
     # DuckDB 2.x holds an open result after execute() and refuses further work
     # on the connection until it is drained. CREATE TABLE AS returns a row
-    # count, so it must be fetched even though nothing uses it — otherwise the
+    # count, so it must be fetched even though nothing uses it, otherwise the
     # next statement fails with "connection has an unfinished result".
     connection.execute(f"{verb} {name} AS SELECT * FROM _incoming").fetchall()
     connection.unregister("_incoming")
@@ -102,7 +102,7 @@ def read_sql(connection, sql, **parameters):
     """Run a query and return a dataframe.
 
     Named parameters are substituted with DuckDB's `$name` binding rather than
-    string formatting — the habit matters more than the risk does here.
+    string formatting, the habit matters more than the risk does here.
     """
     if parameters:
         return connection.execute(sql, parameters).df()
@@ -174,7 +174,7 @@ def describe(connection):
     lines = ["Warehouse", "-" * 9]
 
     if not present:
-        lines.append("  empty — run `python scripts/generate_book.py`")
+        lines.append("  empty, run `python scripts/generate_book.py`")
         return "\n".join(lines)
 
     for name in present:

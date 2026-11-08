@@ -1,5 +1,5 @@
 """
-Phase 4 — the PD term structure.
+Phase 4, the PD term structure.
 
 Phase 3 produced a single pooled PD curve, which was enough to drive a staging
 rule. It is not enough to price a provision: one curve for the whole book
@@ -79,7 +79,7 @@ def accuracy(connection, horizon="12m"):
 
       mean estimate / mean truth   the AGGREGATE. A method can get this right
                                    while being wrong about every account, if
-                                   its errors cancel — which is exactly what
+                                   its errors cancel, which is exactly what
                                    pooling does.
       mean error                   the BIAS, signed. Tells you which way the
                                    provision would be wrong.
@@ -176,7 +176,7 @@ def estimation_coverage(connection):
 
     Cutting by segment AND age band AND arrears bucket multiplies the cells.
     On a small book most of them fall back to the segment's pooled rate, and
-    at that point "age_aware" is the pooled model under another label —
+    at that point "age_aware" is the pooled model under another label,
     judging its accuracy judges something that was never built.
     """
     return db.read_sql(connection, """
@@ -193,7 +193,7 @@ def validate(connection, config):
     """Does the chosen method clear the threshold set before it was built?
 
     Returns a `status` of pass, fail, or **not assessed**. The third is not a
-    softer failure — it is a different finding, and the distinction is the one
+    softer failure, it is a different finding, and the distinction is the one
     this project keeps relearning: a check that cannot tell "the answer is no"
     from "I could not determine the answer" will eventually report the second
     as the first.
@@ -231,7 +231,7 @@ def validate(connection, config):
     })
 
     # Lifetime PD: a RELATIVE tolerance. The horizon varies by account and runs
-    # to five years, so the quantity's scale — and the absolute error with it —
+    # to five years, so the quantity's scale, and the absolute error with it,
     # grows with the term. See config and methodology §5.6.
     frame = accuracy(connection, "lifetime")
     frame = frame.assign(
@@ -266,7 +266,7 @@ def validate(connection, config):
 
     frame = pd.DataFrame(results)
     # `passed` means "did not fail". A check that could not be assessed has
-    # not failed, and the pipeline must not stop on it — but the report says
+    # not failed, and the pipeline must not stop on it, but the report says
     # plainly which of the two happened.
     frame["passed"] = frame["status"] != "fail"
     return frame
@@ -280,7 +280,7 @@ def pd_report(connection, config):
         frame = accuracy(connection, horizon)
         truth = frame["mean_truth"].iloc[0]
 
-        lines.append(f"{label} PD — estimate against the answer key")
+        lines.append(f"{label} PD, estimate against the answer key")
         lines.append("-" * (len(label) + 36))
         lines.append(f"  {'method':<12}{'mean est':>11}{'truth':>10}"
                      f"{'bias':>10}{'mean abs err':>15}{'corr':>8}")
@@ -308,7 +308,7 @@ def pd_report(connection, config):
                      f"{row.mean_estimate:>11.2%}{row.mean_truth:>10.2%}"
                      f"{row.mean_error:>+10.2%}")
     lines.append("")
-    lines.append("  The error is not noise around zero — it tracks the seasoning")
+    lines.append("  The error is not noise around zero, it tracks the seasoning")
     lines.append("  curve. A method blind to age must overstate risk where the")
     lines.append("  true hazard is low and understate it where it peaks.")
 
@@ -338,18 +338,18 @@ def pd_report(connection, config):
 
     if not bool(checks["assessable"].iloc[0]):
         lines.append("")
-        lines.append("  NOT ASSESSED, and that is a different finding from a failure.")
-        lines.append(f"  {coverage['fell_back']:.0f} of {coverage['cells']:.0f} matrix "
+        lines.append("  NOT ASSESSED. and that is a different finding from a failure.")
+        lines.append(f"  {coverage['fell_back']:,.0f} of {coverage['cells']:,.0f} matrix "
                      f"cells ({coverage['fallback_share']:.0%}) fell back to the")
         lines.append(f"  segment's pooled rate, and the thinnest holds "
-                     f"{coverage['thinnest_cell']:.0f} transition(s). There is no")
-        lines.append("  age-aware model here to be accurate or inaccurate — the book")
+                     f"{coverage['thinnest_cell']:,.0f} transition(s). There is no")
+        lines.append("  age-aware model here to be accurate or inaccurate, the book")
         lines.append("  is too small to estimate one. The figures above are printed")
         lines.append("  so they can be seen, not so they can be believed.")
     else:
         lines.append("")
-        lines.append(f"  model coverage: {coverage['fell_back']:.0f} of "
-                     f"{coverage['cells']:.0f} cells ({coverage['fallback_share']:.1%}) "
+        lines.append(f"  model coverage: {coverage['fell_back']:,.0f} of "
+                     f"{coverage['cells']:,.0f} cells ({coverage['fallback_share']:.1%}) "
                      "used the fallback")
 
     return "\n".join(lines)

@@ -1,5 +1,5 @@
 """
-Phase 6 — expected credit loss.
+Phase 6, expected credit loss.
 
 Everything the previous five phases built, multiplied together and discounted:
 
@@ -14,7 +14,7 @@ TWO QUESTIONS, TWO GATES. Phase 6's own work is the arithmetic above, and it is
 deterministic, so it is checked by feeding the engine's own expression the exact
 inputs from `ground_truth_monthly` and demanding the answer key back to the
 cent. Whether the ECL built from ESTIMATED inputs is close to truth is a
-different question and mostly a question about Phases 4 and 5 — ECL is a
+different question and mostly a question about Phases 4 and 5, ECL is a
 product of three estimates, so to first order its relative error is the sum of
 theirs. Conflating the two in a single 2% tolerance produced a gate that
 correct code could not pass and incorrect code could. See methodology §7.3.
@@ -37,7 +37,7 @@ def build(connection, config, verbose=True):
             print(f"  {name}")
         db.run_sql_file(connection, name, horizon_stage_1=horizon)
     if verbose:
-        print(f"  provisioned {db._count(connection, 'ecl_account'):,} accounts")
+        print(f"  provisioned {db._count(connection, 'ecl_account'): } accounts")
 
 
 def portfolio(connection, level="stage"):
@@ -95,8 +95,8 @@ def input_attribution(connection, config):
 
     Rebuilds the ECL sum with the true LGD substituted and the estimated PD
     left in place. Whatever gap remains is PD. Worth measuring rather than
-    assuming, because the obvious guess — that a single segment-level LGD
-    applied to every account must be the crude part — turns out to be wrong.
+    assuming, because the obvious guess, that a single segment-level LGD
+    applied to every account must be the crude part, turns out to be wrong.
     """
     horizon = int(config["ecl"]["horizon_months_stage_1"])
     return db.read_sql(connection, """
@@ -137,7 +137,7 @@ def inputs_were_assessable(connection, config):
     ASSESSABILITY PROPAGATES DOWNSTREAM, and this is the rule that says so.
 
     ECL is a function of the PD and LGD estimates. Phases 4 and 5 each decide,
-    from their own sample, whether their accuracy can be assessed — on a small
+    from their own sample, whether their accuracy can be assessed, on a small
     book the age-aware PD matrix is mostly fallback cells and the LGD standard
     error swamps its tolerance, so both report `not assessed` rather than
     `fail`. If the inputs could not be judged, an accuracy figure computed from
@@ -150,7 +150,7 @@ def inputs_were_assessable(connection, config):
     while both PD gates and the LGD gate on the same run printed `--`.
 
     The ARITHMETIC gate is unaffected and still applies, because it does not
-    depend on the inputs being good — it substitutes exact ones. That is the
+    depend on the inputs being good, it substitutes exact ones. That is the
     gate that guards Phase 6, and it passes on every book size.
     """
     pd_checks = pdmod.validate(connection, config)
@@ -177,7 +177,7 @@ def validate(connection, config):
                                residuals["max_residual_12m"]))
 
     # Decided from the UPSTREAM gates, before this phase's own accuracy figure
-    # is looked at — the same discipline as Phase 5's precision gate. The
+    # is looked at, the same discipline as Phase 5's precision gate. The
     # question is whether there is evidence to judge, not whether the verdict
     # would be convenient.
     upstream = inputs_were_assessable(connection, config)
@@ -271,7 +271,7 @@ def ecl_report(connection, config):
     lines.append(f"  {'stage':<22}{'accounts':>9}{'exposure':>15}"
                  f"{'ECL':>13}{'coverage':>10}{'true':>9}{'error':>9}")
     for row in by_stage.itertuples(index=False):
-        label = f"{row.stage} — {basis.get(row.stage, '')}"
+        label = f"{row.stage}, {basis.get(row.stage, '')}"
         lines.append(f"  {label:<22}{row.accounts:>9,}{row.exposure:>15,.0f}"
                      f"{row.ecl:>13,.0f}{row.coverage_ratio:>10.2%}"
                      f"{row.true_coverage_ratio:>9.2%}"
@@ -323,7 +323,7 @@ def ecl_report(connection, config):
     lines.append("The staging cliff")
     lines.append("-" * 17)
     lines.append("  Lifetime provision as a multiple of the 12-month one, for")
-    lines.append("  the SAME accounts — the jump taken on crossing SICR.")
+    lines.append("  the SAME accounts, the jump taken on crossing SICR.")
     lines.append(f"  {'arrears bucket':<18}{'accounts':>9}{'12-month':>13}"
                  f"{'lifetime':>13}{'multiple':>10}")
     for row in cliff.itertuples(index=False):
@@ -357,7 +357,7 @@ def ecl_report(connection, config):
         lines.append("  feeding it could not be assessed on a book this size "
                      "either.")
         lines.append("  ECL is a function of those estimates, so there is no")
-        lines.append("  evidence here about its accuracy — which is a different")
+        lines.append("  evidence here about its accuracy, which is a different")
         lines.append("  finding from evidence that it is wrong.")
         lines.append("")
         lines.append("  The ARITHMETIC gate above is unaffected and did apply:")

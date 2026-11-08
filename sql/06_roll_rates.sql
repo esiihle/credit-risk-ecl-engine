@@ -1,21 +1,21 @@
 -- =============================================================================
--- roll_rate — the pooled transition matrix, estimated from observed moves
+-- roll_rate, the pooled transition matrix, estimated from observed moves
 -- =============================================================================
 -- One row per (from_bucket, to_bucket) pair that was observed, with the count
 -- and the rate. Rates are conditional on the starting bucket, so they sum to 1
--- across each from_bucket — which is what makes this a transition matrix
+-- across each from_bucket, which is what makes this a transition matrix
 -- rather than a table of proportions.
 --
 -- This is the empirical counterpart to the matrix the generator used. The two
--- are produced by completely different routes — one counts what happened in
+-- are produced by completely different routes, one counts what happened in
 -- 500,000 account-months, the other is the matrix those months were drawn from
--- — so agreement between them is evidence that the estimation is right.
+-- so agreement between them is evidence that the estimation is right.
 --
 -- WHAT A POOLED MATRIX IS AND IS NOT
 --
 -- The true matrix varies by segment (riskier borrowers miss more often) and by
 -- month on book (seasoning). Pooling across both produces a single matrix that
--- is the EXPOSURE-WEIGHTED AVERAGE of them — a real and useful quantity, and
+-- is the EXPOSURE-WEIGHTED AVERAGE of them, a real and useful quantity, and
 -- the one a book-level MI pack reports, but not the matrix of any individual
 -- account.
 --

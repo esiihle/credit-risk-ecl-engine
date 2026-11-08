@@ -55,14 +55,14 @@ def main():
     if args.status:
         print("\nBuild plan\n" + "-" * 10)
         for phase, name, produces in STAGES:
-            print(f"  Phase {phase} — {name:<28} {produces}")
+            print(f"  Phase {phase}, {name:<28} {produces}")
         print()
         return 0
 
     if args.sample:
         # Work on a COPY. The committed sample is a version-controlled file, and
         # building the mart into it would leave the repository dirty after
-        # every run — and eventually someone commits the derived tables, which
+        # every run, and eventually someone commits the derived tables, which
         # then go stale against the SQL that produced them.
         source = REPO_ROOT / config["data"]["sample_path"]
         if not source.exists():
@@ -77,9 +77,9 @@ def main():
     else:
         target = None
 
-    print(f"\nECL engine — {config['portfolio']['product']}, "
+    print(f"\nECL engine, {config['portfolio']['product']}, "
           f"reporting date {config['portfolio']['reporting_date']}")
-    print("  SYNTHETIC BOOK — true PD, EAD and LGD are known by construction\n")
+    print("  SYNTHETIC BOOK, true PD, EAD and LGD are known by construction\n")
 
     try:
         connection = db.connect(config, target, read_only=True)
@@ -96,7 +96,7 @@ def main():
     # --- Phase 1: the data mart ------------------------------------------
     # Reopened for writing: the mart is built here, not read.
     print()
-    print("Stage 1 — Data mart")
+    print("Stage 1, Data mart")
     connection = db.connect(config, target)
     try:
         mart.build(connection, config)
@@ -123,7 +123,7 @@ def main():
 
     # --- Phase 2: delinquency transitions and roll rates ------------------
     print()
-    print("Stage 2 — Delinquency and roll rates")
+    print("Stage 2, Delinquency and roll rates")
     try:
         rollrate.build(connection)
     except Exception as error:
@@ -136,7 +136,7 @@ def main():
 
     # --- Phase 3: IFRS 9 staging ------------------------------------------
     print()
-    print("Stage 3 — IFRS 9 staging")
+    print("Stage 3, IFRS 9 staging")
     try:
         staging.build(connection, config)
     except Exception as error:
@@ -159,7 +159,7 @@ def main():
 
     # --- Phase 4: the PD term structure ------------------------------------
     print()
-    print("Stage 4 — PD term structure")
+    print("Stage 4, PD term structure")
     try:
         pdmod.build(connection, config)
     except Exception as error:
@@ -188,7 +188,7 @@ def main():
 
     # --- Phase 5: LGD and EAD ----------------------------------------------
     print()
-    print("Stage 5 — loss given default and exposure at default")
+    print("Stage 5, loss given default and exposure at default")
     try:
         lgdmod.build(connection, config)
     except Exception as error:
@@ -216,7 +216,7 @@ def main():
 
     # --- Phase 6: the ECL calculation --------------------------------------
     print()
-    print("Stage 6 — expected credit loss")
+    print("Stage 6, expected credit loss")
     try:
         eclmod.build(connection, config)
     except Exception as error:
@@ -244,7 +244,7 @@ def main():
 
     # --- Phase 7: vintage curves and portfolio MI ---------------------------
     print()
-    print("Stage 7 — vintage curves and portfolio MI")
+    print("Stage 7, vintage curves and portfolio MI")
     try:
         vintagemod.build(connection, config)
     except Exception as error:
@@ -284,7 +284,7 @@ def main():
     highest_built = 7
     for phase, name, produces in STAGES:
         status = "built" if phase <= highest_built else "NOT YET BUILT"
-        print(f"  Phase {phase} — {name:<28} {status}")
+        print(f"  Phase {phase}, {name:<28} {status}")
     print()
     print("Phase 7 complete: 48 monthly vintages, compared at a common age.")
     print("The naive comparison invents 4.03pp a year of improvement on a book")

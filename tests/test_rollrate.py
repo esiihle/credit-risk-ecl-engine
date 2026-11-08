@@ -1,5 +1,5 @@
 """
-Phase 2 tests — delinquency transitions and roll rates.
+Phase 2 tests, delinquency transitions and roll rates.
 
 Two headlines here, and they test different things.
 
@@ -38,8 +38,8 @@ def built(config, tmp_path_factory):
     """A book large enough for the transition estimates to be stable.
 
     Smaller than the full book so the suite stays quick, but the deep arrears
-    buckets are thinly populated by construction — most accounts never reach
-    60-89 DPD — so too small a book leaves nothing to estimate from.
+    buckets are thinly populated by construction, most accounts never reach
+    60-89 DPD, so too small a book leaves nothing to estimate from.
     """
     path = tmp_path_factory.mktemp("rollrate") / "test.duckdb"
 
@@ -67,7 +67,7 @@ def test_exactly_one_transition_is_lost_per_account(built):
 
     This is arithmetic, not approximation: transitions must equal fact rows
     minus accounts. If it is short by more, the window function is dropping
-    moves — most likely the `months_on_book + 1` guard firing on a gap, which
+    moves, most likely the `months_on_book + 1` guard firing on a gap, which
     would mean the mart's own no-gaps check is lying.
     """
     connection, _ = built
@@ -115,7 +115,7 @@ def test_the_naive_denominator_is_biased_downward(built):
     final month. Every roll-forward rate is then too low, and the missing mass
     lands on the diagonal.
 
-    The bias is asserted to be real and directional, not merely nonzero — a
+    The bias is asserted to be real and directional, not merely nonzero, a
     test that only checked "the two differ" would pass if they differed the
     wrong way.
     """
@@ -175,7 +175,7 @@ def test_the_estimated_matrix_matches_the_known_truth(built):
     The comparison is against the EXPOSURE-WEIGHTED AVERAGE of the true
     matrices, not against the base rates in config. The true matrix varies by
     segment and by month on book, so no single true matrix exists to compare a
-    pooled estimate against — but every observed transition had one, and
+    pooled estimate against, but every observed transition had one, and
     averaging them with the weights the data carries gives the quantity the
     pooled estimate is estimating.
 
@@ -198,7 +198,7 @@ def test_the_estimated_matrix_matches_the_known_truth(built):
         f"{worst['from_bucket']} -> {worst['to_bucket']}: observed "
         f"{worst['observed']:.3%} against a true {worst['truth']:.3%}, a gap of "
         f"{worst['gap_in_standard_errors']:+.1f} standard errors on "
-        f"{worst['opportunities']:,} opportunities. The estimate and the matrix "
+        f"{worst['opportunities']: } opportunities. The estimate and the matrix "
         "it was drawn from disagree."
     )
 
@@ -206,7 +206,7 @@ def test_the_estimated_matrix_matches_the_known_truth(built):
     # mostly on one side, which would indicate a bias rather than noise.
     mean_gap = comparison["gap_in_standard_errors"].mean()
     assert abs(mean_gap) < 1.5, (
-        f"the gaps average {mean_gap:+.2f} standard errors — that is a "
+        f"the gaps average {mean_gap:+.2f} standard errors, that is a "
         "systematic bias, not sampling noise"
     )
 
@@ -226,7 +226,7 @@ def test_comparing_against_config_base_rates_would_be_wrong(built):
     weighted_miss = expected.iloc[0, 1]
     assert weighted_miss != pytest.approx(base["miss_from_current"], abs=0.005), (
         "the weighted-average miss rate happens to equal the base rate, so "
-        "this test cannot tell the two approaches apart — pick a transition "
+        "this test cannot tell the two approaches apart, pick a transition "
         "where seasoning and segment mix actually bite"
     )
 
@@ -252,7 +252,7 @@ def test_seasoning_is_visible_in_the_miss_rate(built):
     """Risk peaks part-way through a loan's life, not at origination.
 
     If this were flat, the generator's seasoning curve would not be reaching
-    the data — and Phase 7's vintage analysis would have nothing to show.
+    the data, and Phase 7's vintage analysis would have nothing to show.
     """
     connection, config = built
     by_age = db.read_sql(connection, """
@@ -266,7 +266,7 @@ def test_seasoning_is_visible_in_the_miss_rate(built):
 
     peak = int(np.argmax(rates))
     assert 0 < peak < len(rates) - 1, (
-        f"the miss rate peaks at band {peak} of {len(rates)} — seasoning should "
+        f"the miss rate peaks at band {peak} of {len(rates)}, seasoning should "
         "hump in the middle, not at either end"
     )
     assert rates.max() / rates.min() > 1.2, "the seasoning effect is too faint to see"

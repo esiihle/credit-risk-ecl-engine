@@ -1,5 +1,5 @@
 -- =============================================================================
--- segment_age_matrix — transition matrices by segment AND age band
+-- segment_age_matrix, transition matrices by segment AND age band
 -- =============================================================================
 -- Phase 2 produced roll rates cut by segment OR by age. Neither is enough here.
 --
@@ -7,7 +7,7 @@
 -- a different risk from a subprime account in its final year, and the pooled
 -- matrix is an average that describes neither. A PD curve built from the pooled
 -- matrix therefore carries a systematic error that varies with an account's
--- age — which is exactly the sort of error that cancels in aggregate and
+-- age, which is exactly the sort of error that cancels in aggregate and
 -- misprices every individual account.
 --
 -- So the cut is JOINT: one matrix per (segment, age band).
@@ -15,7 +15,7 @@
 -- WHY BANDS RATHER THAN EXACT MONTHS
 --
 -- A matrix per exact month on book would track seasoning perfectly and be
--- estimated on almost nothing — the deep arrears cells would hold a handful of
+-- estimated on almost nothing, the deep arrears cells would hold a handful of
 -- transitions each and the resulting rates would be noise. Banding trades a
 -- little resolution for estimates that hold still. The bands here are the same
 -- ones Phase 2 used, so the two phases cut the book identically.

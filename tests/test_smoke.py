@@ -1,7 +1,7 @@
 """
 Phase 0 smoke tests.
 
-These do not test the ECL mathematics — those tests arrive with each phase.
+These do not test the ECL mathematics, those tests arrive with each phase.
 They check the scaffolding holds together: the config loads and its invariants
 are enforced, every module imports, the warehouse opens, and the bundled sample
 is present and usable. A green run here means a fresh clone is wired correctly.
@@ -107,7 +107,7 @@ def test_the_bundled_sample_is_committed_and_usable():
     sample = REPO_ROOT / config["data"]["sample_path"]
     assert sample.exists(), (
         f"{sample} is missing. It is committed on purpose so a clone works "
-        "immediately — rebuild with `python scripts/generate_book.py --sample`"
+        "immediately, rebuild with `python scripts/generate_book.py --sample`"
     )
 
     connection = db.connect(config, sample, read_only=True)
@@ -121,18 +121,18 @@ def test_the_bundled_sample_is_committed_and_usable():
 def test_git_ignores_the_working_data_but_not_the_committed_sample():
     """Asks git, rather than reading .gitignore and reasoning about it.
 
-    A sister project wrote `data/*` and silently excluded its own committed
+    My scorecard project wrote `data/*` and silently excluded its own committed
     sample; a fresh clone then crashed. This project nearly repeated it with a
     blanket `*.duckdb` rule, which would have ignored the sample database by
     extension. String-matching the rules file would not reliably catch either
-    — the only authority on what git ignores is git.
+    the only authority on what git ignores is git.
     """
     import subprocess
 
     # `git check-ignore` exits 128 outside a work tree, which is neither
     # "ignored" nor "not ignored". Treating 128 as "not ignored" is how the
     # first version of this test failed confusingly for anyone running pytest
-    # from an unzipped folder before `git init` — the test reported that the
+    # from an unzipped folder before `git init`, the test reported that the
     # working warehouse was version-controlled, which was not the problem.
     inside_repo = subprocess.run(
         ["git", "rev-parse", "--is-inside-work-tree"],
@@ -163,7 +163,7 @@ def test_git_ignores_the_working_data_but_not_the_committed_sample():
     )
 
     assert ignored(Path(config["data"]["database"])), (
-        "the working warehouse should not be version-controlled — it is "
+        "the working warehouse should not be version-controlled, it is "
         "reproducible from the seed"
     )
     assert ignored(Path("data/raw/anything.csv"))
@@ -175,7 +175,7 @@ def test_running_the_pipeline_does_not_modify_the_committed_sample():
 
     The sample book is version-controlled. Building the mart into it would
     leave the repository dirty after every run, and eventually someone commits
-    the derived tables — which then go stale against the SQL that produced
+    the derived tables, which then go stale against the SQL that produced
     them, with nothing to say so.
     """
     import re
@@ -195,7 +195,7 @@ def test_the_committed_sample_holds_source_tables_only():
     """Derived tables are rebuilt, never shipped.
 
     A committed mart would be a second source of truth that no command
-    regenerates — the exact failure mode this portfolio has already had with
+    regenerates, the exact failure mode this portfolio has already had with
     numbers typed into comments.
     """
     config = load_config()

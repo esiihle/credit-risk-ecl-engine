@@ -1,12 +1,12 @@
 -- =============================================================================
--- ecl_account — expected credit loss, per account
+-- ecl_account, expected credit loss, per account
 -- =============================================================================
 -- Everything the previous five phases built, multiplied together:
 --
 --     ECL = SUM over t of  marginal_PD(t) x LGD x EAD(t) x discount(t)
 --
 -- `marginal_PD(t)` is the probability of defaulting IN month t having survived
--- to t-1 — NOT the cumulative PD. Using the cumulative figure would count the
+-- to t-1, NOT the cumulative PD. Using the cumulative figure would count the
 -- same default repeatedly, once in every month after it happened, and would
 -- overstate the provision badly on long horizons.
 --
@@ -14,7 +14,7 @@
 -- THE HORIZON IS THE ACCOUNTING JUDGEMENT, AND IT IS WHERE IFRS 9 LIVES
 -- -----------------------------------------------------------------------------
 -- The arithmetic above is identical for every account. What differs is how far
--- the sum runs, and that is decided by the stage set in Phase 3:
+-- the sum runs. and that is decided by the stage set in Phase 3:
 --
 --   Stage 1  12-month ECL      t = 1 .. min(12, remaining term)
 --   Stage 2  lifetime ECL      t = 1 .. remaining term
@@ -22,7 +22,7 @@
 --
 -- So an account's provision can multiply several times over without its credit
 -- quality changing at all, purely by crossing the SICR threshold. That
--- discontinuity — the "staging cliff" — is the most-criticised feature of the
+-- discontinuity, the "staging cliff", is the most-criticised feature of the
 -- standard, and `17_ecl_portfolio.sql` measures how big it is on this book
 -- rather than leaving it as an assertion.
 --
@@ -41,7 +41,7 @@
 --
 -- Undiscounted because the loss has already arisen rather than being awaited in
 -- some future month, and because the LGD it multiplies is not yet a
--- present-value measure either — discounting one side of the product and not
+-- present-value measure either, discounting one side of the product and not
 -- the other would be worse than discounting neither.
 --
 -- Getting this wrong is not a rounding matter. The answer key itself had the
@@ -52,15 +52,15 @@
 -- -----------------------------------------------------------------------------
 -- WHICH ESTIMATES THIS CONSUMES
 -- -----------------------------------------------------------------------------
---   PD   `pd_term_structure`, age-aware — the method Phase 4 measured as the
+--   PD   `pd_term_structure`, age-aware, the method Phase 4 measured as the
 --        most accurate of the three, by a factor of nine per account.
---   LGD  `lgd_estimate.lgd_resolved_only` — resolved collections workouts only.
+--   LGD  `lgd_estimate.lgd_resolved_only`, resolved collections workouts only.
 --        The simple mean rather than the exposure-weighted one, because here it
 --        serves as each individual account's expected loss rate, and the simple
 --        mean is the unbiased estimate of that. The exposure-weighted figure is
 --        the right one for a portfolio total and is reported alongside it.
---   EAD  `ead_schedule` — the contractual amortisation, exact to the cent.
---   Disc `ead_schedule.discount_factor` — at the effective interest rate, as
+--   EAD  `ead_schedule`, the contractual amortisation, exact to the cent.
+--   Disc `ead_schedule.discount_factor`, at the effective interest rate, as
 --        IFRS 9 requires.
 --
 -- Nothing here reads `true_lgd`, `true_pd_*` or `true_ecl_*`. The answer key is

@@ -1,4 +1,4 @@
-# Credit risk ECL engine — pinned dependencies.
+# Credit risk ECL engine , pinned dependencies.
 # Install with:  pip install -r requirements.txt
 #
 # Every pin is exact (==), not >=. A minor version change in DuckDB can alter

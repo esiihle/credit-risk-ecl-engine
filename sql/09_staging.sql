@@ -1,5 +1,5 @@
 -- =============================================================================
--- account_stage — IFRS 9 staging, for every account-month
+-- account_stage, IFRS 9 staging, for every account-month
 -- =============================================================================
 -- THE ACCOUNTING JUDGEMENT OF THE WHOLE PROJECT.
 --
@@ -20,10 +20,10 @@
 -- -----------------------------------------------------------------------------
 -- THE TRIGGERS
 -- -----------------------------------------------------------------------------
--- Stage 3 — `days_past_due >= staging.default_dpd` (90). The Basel/IFRS 9
+-- Stage 3, `days_past_due >= staging.default_dpd` (90). The Basel/IFRS 9
 --           default definition, stated in config rather than assumed.
 --
--- Stage 2 — significant increase in credit risk since origination. Three ways
+-- Stage 2, significant increase in credit risk since origination. Three ways
 --           in, any one sufficient:
 --
 --   a) THE 30-DAY BACKSTOP. IFRS 9 carries a rebuttable presumption that risk
@@ -73,7 +73,7 @@ WITH with_pd AS (
         a.term_months,
 
         -- Lifetime PD as things stand: from the CURRENT bucket, over the
-        -- REMAINING term. Both parts matter — an account deep in arrears with
+        -- REMAINING term. Both parts matter, an account deep in arrears with
         -- two months left is a different risk from the same account with four
         -- years to run.
         COALESCE(now_curve.cumulative_pd, 0.0)              AS lifetime_pd_now,

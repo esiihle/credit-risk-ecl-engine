@@ -1,5 +1,5 @@
 """
-Phase 4 tests — the PD term structure.
+Phase 4 tests, the PD term structure.
 
 The headline is `test_the_age_aware_curve_beats_the_pooled_one`. Every earlier
 phase checked that something was *correct*; this one checks that a refinement
@@ -63,7 +63,7 @@ def test_the_answer_key_uses_each_accounts_actual_bucket(config):
     The first version computed every account's true PD as though it were
     performing. That was harmless until PD was compared per account across the
     whole book, at which point an account 60-89 days past due appeared in the
-    key at 5.4% against a real 84% — and the engine looked wrong by a factor
+    key at 5.4% against a real 84%, and the engine looked wrong by a factor
     of two when it was right.
 
     An answer key valid for only part of the book is worse than none, because
@@ -126,7 +126,7 @@ def test_the_walk_changes_matrix_as_it_ages(built):
     """The defining property of this phase.
 
     Two accounts in the same segment and bucket, looking 12 months ahead from
-    different starting ages, must get different PDs — otherwise the age-aware
+    different starting ages, must get different PDs, otherwise the age-aware
     walk is reading one matrix and the whole file is ceremony.
     """
     connection, _ = built
@@ -139,7 +139,7 @@ def test_the_walk_changes_matrix_as_it_ages(built):
     assert len(curves) == 3
     values = curves["cumulative_pd"].to_numpy()
     assert len(set(np.round(values, 6))) == 3, (
-        f"the 12-month PD is the same at every age ({values}) — the walk is "
+        f"the 12-month PD is the same at every age ({values}), the walk is "
         "not picking up the age band"
     )
     # And it should hump: risk peaks mid-life, not at origination or maturity.
@@ -178,7 +178,7 @@ def test_the_thin_cell_fallback_fires_where_it_should(built):
     """, limit=limit)["n"].iloc[0]
     assert wrong == 0, "the fallback flag disagrees with the threshold"
 
-    # Every row must still sum to 1 even where the fallback was used — a
+    # Every row must still sum to 1 even where the fallback was used, a
     # mixture of own-cell and pooled rates is not automatically normalised.
     bad_rows = db.read_sql(connection, """
         SELECT COUNT(*) AS n FROM (
@@ -189,7 +189,7 @@ def test_the_thin_cell_fallback_fires_where_it_should(built):
         )
     """)["n"].iloc[0]
     assert bad_rows == 0, (
-        "a transition row does not sum to 1 — most likely a fallback mixing "
+        "a transition row does not sum to 1, most likely a fallback mixing "
         "own-cell rates with pooled ones without renormalising"
     )
 
@@ -235,7 +235,7 @@ def test_lifetime_pd_is_never_below_the_12_month_pd(built):
 def test_the_age_aware_curve_beats_the_pooled_one(built):
     """Each refinement must earn its place, measured against the answer key.
 
-    Not "the engine is correct" — every phase so far has checked that. This
+    Not "the engine is correct", every phase so far has checked that. This
     checks that added complexity bought accuracy, which is the only
     justification for it. A segmentation that does not improve the estimate is
     cost without benefit, and the only way to know is to build the simpler
@@ -283,7 +283,7 @@ def test_the_pooled_error_tracks_seasoning_rather_than_being_noise(built):
     assert len(by_age) >= 3
     errors = by_age["mean_error"].to_numpy()
 
-    # Both signs must appear — a purely one-sided error would be a simple
+    # Both signs must appear, a purely one-sided error would be a simple
     # calibration offset, not a seasoning effect.
     assert errors.min() < 0 < errors.max(), (
         f"the pooled error has one sign at every age ({errors}), which is a "
@@ -298,7 +298,7 @@ def test_the_pooled_error_cancels_in_aggregate_but_not_per_account(built):
 
     Pooling understates subprime and overstates prime. Those errors partly
     cancel in the book total, so a method can look acceptable on the headline
-    number while mispricing every individual account — and a provision is
+    number while mispricing every individual account, and a provision is
     built account by account.
     """
     connection, _ = built
@@ -315,7 +315,7 @@ def test_the_pooled_error_cancels_in_aggregate_but_not_per_account(built):
 
     assert per_account_error > aggregate_bias * 2, (
         f"the per-account error ({per_account_error:.4f}) should be much larger "
-        f"than the aggregate bias ({aggregate_bias:.4f}) — that gap IS the "
+        f"than the aggregate bias ({aggregate_bias:.4f}), that gap IS the "
         "cancellation this test is about"
     )
 
@@ -333,8 +333,8 @@ def test_a_book_too_small_to_estimate_reports_not_assessed_not_failed(config, tm
     """The bug that turned CI red, and the distinction it was missing.
 
     CI runs the pipeline against the committed 400-account sample. Phase 4's
-    accuracy gate failed there — 12-month error 0.0282 against a 0.01 limit,
-    correlation 0.65 — and the pipeline stopped, so the whole workflow went
+    accuracy gate failed there, 12-month error 0.0282 against a 0.01 limit,
+    correlation 0.65, and the pipeline stopped, so the whole workflow went
     red on a repository whose code was fine.
 
     The estimate was not inaccurate. It did not exist. Cutting 400 accounts by
@@ -346,7 +346,7 @@ def test_a_book_too_small_to_estimate_reports_not_assessed_not_failed(config, tm
     **A check that cannot tell "the answer is no" from "I could not determine
     the answer" will eventually report the second as the first.** The same
     shape as the git-ignore test that read a missing repository as a bad
-    .gitignore, and the optimiser in the football project that returned
+    .gitignore, and the optimiser in my football model that returned
     `success: True` while failing to converge.
     """
     tiny = dict(config)
@@ -408,8 +408,8 @@ def test_a_book_large_enough_is_actually_assessed(built):
 def test_the_assessability_threshold_is_about_the_input_not_the_result(config):
     """Guards against this becoming a way to make failures disappear.
 
-    The threshold asks whether the model was estimated — a property of the
-    data — and must never be derived from whether the accuracy check passed.
+    The threshold asks whether the model was estimated, a property of the
+    data, and must never be derived from whether the accuracy check passed.
     If a future edit keys it off an error measure, that is a result-driven
     limit and exactly what this project's own rules forbid.
     """

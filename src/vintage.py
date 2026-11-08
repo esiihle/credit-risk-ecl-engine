@@ -1,5 +1,5 @@
 """
-Phase 7 — vintage curves and portfolio MI.
+Phase 7, vintage curves and portfolio MI.
 
 Two views of the same book that answer different questions, and a demonstration
 of what goes wrong when they are confused.
@@ -17,7 +17,7 @@ That last clause is the whole difficulty. A cohort originated last December has
 been watched for twelve months; one from four years ago for fifty-nine. Compare
 their cumulative default rates as they stand and the newer one always wins, for
 reasons that have nothing to do with credit. On this book that artefact
-manufactures four percentage points a year of imaginary improvement — see
+manufactures four percentage points a year of imaginary improvement, see
 `censoring_artefact()`.
 
 The generator draws segment and origination month INDEPENDENTLY, so every
@@ -44,7 +44,7 @@ def build(connection, config, verbose=True):
     # The comparison age: the oldest age the YOUNGEST cohort has reached, so
     # every cohort is included and none is carried forward. Derived from the
     # data rather than configured, because a hard-coded age would silently
-    # start excluding cohorts — or silently start comparing censored ones — as
+    # start excluding cohorts, or silently start comparing censored ones, as
     # soon as the reporting date or the origination window moved.
     common_age = int(db.read_sql(connection, """
         SELECT MIN(watched) AS m FROM (
@@ -188,7 +188,7 @@ def age_profile_drift(connection):
 
     The question `portfolio_mi` cannot answer on its own. If the average age of
     the book is rising and cohort quality is flat, then a worsening arrears
-    rate is maturity, not deterioration — and the correlation between the two
+    rate is maturity, not deterioration, and the correlation between the two
     is the cheapest available evidence for which it is.
     """
     frame = calendar_mi(connection)
@@ -215,8 +215,8 @@ def age_profile_drift(connection):
 def gate_precision(connection, config):
     """Can the vintage statistics be judged on a book this size?
 
-    Decided from the SAMPLE — how many accounts are in a cohort and how many
-    defaults are expected in one — before any slope or p-value is looked at.
+    Decided from the SAMPLE, how many accounts are in a cohort and how many
+    defaults are expected in one, before any slope or p-value is looked at.
     Vintage analysis divides the book by origination month, so the cohort is
     the sample, and a book that is ample for a portfolio statistic can be
     hopeless for a cohort one: the 400-account sample gives 8 accounts and 0.4
@@ -228,7 +228,7 @@ def gate_precision(connection, config):
                 tolerance, so a gate meant to catch an invented trend is not
                 itself reporting noise. On the sample that slope has a standard
                 error of 0.92pp/yr against a 0.5pp/yr limit, and the fitted
-                value of -1.56pp/yr sits 1.7 standard errors from zero — no
+                value of -1.56pp/yr sits 1.7 standard errors from zero, no
                 evidence of anything, and a failure under the unguarded gate.
 
       DISPERSION  the expected default count per cohort must be at least 5, the
@@ -339,7 +339,7 @@ def validate(connection, config):
                 noise["dispersion_ratio"] <= dispersion_limit, dispersion_ok),
         },
         {
-            # Not a quality gate on the engine — a gate on the demonstration.
+            # Not a quality gate on the engine, a gate on the demonstration.
             # If the naive comparison stopped being badly wrong, the phase
             # would have nothing to show, and silence would be the wrong
             # response. Same role as Phase 5's bias check.
@@ -383,7 +383,7 @@ def vintage_report(connection, config):
 
     lines = ["", "Vintage curves", "-" * 14]
     lines.append(f"  {noise['cohorts']} monthly cohorts, "
-                 f"{noise['mean_cohort_size']:.0f} accounts each on average")
+                 f"{noise['mean_cohort_size']:,.0f} accounts each on average")
     lines.append(f"  compared at a common age of {artefact['common_age']} months, "
                  f"the oldest age every cohort has reached")
 
@@ -417,10 +417,10 @@ def vintage_report(connection, config):
     lines.append("Is lending getting better or worse?")
     lines.append("-" * 35)
     lines.append("  The same question, answered twice.")
-    lines.append(f"    naive — each cohort at its own latest age")
+    lines.append(f"    naive, each cohort at its own latest age")
     lines.append(f"      trend {artefact['naive_slope_per_year']:+.2%} per year"
                  f"   (correlation {artefact['naive_correlation']:+.3f})")
-    lines.append(f"    fair  — every cohort at {artefact['common_age']} months")
+    lines.append(f"    fair, every cohort at {artefact['common_age']} months")
     lines.append(f"      trend {artefact['fair_slope_per_year']:+.2%} per year"
                  f"   (correlation {artefact['fair_correlation']:+.3f})")
     lines.append("")
@@ -428,7 +428,7 @@ def vintage_report(connection, config):
                  f"improvement is artefact.")
     lines.append(f"    The {artefact['worst_naive_cohort']} cohort's naive rate "
                  f"sits {artefact['worst_naive_excess'] * 100:.2f}pp")
-    lines.append(f"    above its {artefact['common_age']}-month rate — not "
+    lines.append(f"    above its {artefact['common_age']}-month rate, not "
                  f"because it lent badly,")
     lines.append(f"    but because it has been watched "
                  f"{artefact['worst_extra_months']} months longer.")
@@ -496,7 +496,7 @@ def vintage_report(connection, config):
         lines.append("")
         lines.append("  Some checks were NOT ASSESSED. Vintage analysis divides")
         lines.append("  the book by origination month, so the COHORT is the")
-        lines.append("  sample — and this one is too thin to support them:")
+        lines.append("  sample, and this one is too thin to support them:")
         lines.append(f"    accounts per cohort            "
                      f"{precision['mean_cohort_size']:>8.1f}")
         lines.append(f"    expected defaults per cohort   "

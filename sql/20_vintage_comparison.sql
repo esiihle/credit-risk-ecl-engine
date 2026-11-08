@@ -1,8 +1,8 @@
 -- =============================================================================
--- vintage_comparison — the fair comparison, and the naive one beside it
+-- vintage_comparison, the fair comparison, and the naive one beside it
 -- =============================================================================
 -- `19_vintage_curves.sql` builds the triangle. This file answers the question
--- the triangle is built to answer — "is our lending getting better or worse?" —
+-- the triangle is built to answer, "is our lending getting better or worse?",
 -- twice, once correctly and once the way it is usually done, so the difference
 -- between them is a number rather than a warning.
 --
@@ -11,7 +11,7 @@
 --          Apples to apples: same elapsed life, same term mix, same segment
 --          mix, so the only thing left to differ is cohort quality.
 --
---   naive  every cohort's LATEST cumulative default rate — whatever it happens
+--   naive  every cohort's LATEST cumulative default rate, whatever it happens
 --          to be today. This is what a vintage table shows when nobody thinks
 --          about the observation window, and on a growing book it is a ramp
 --          from high to low with no credit meaning at all.
@@ -22,7 +22,7 @@
 -- something different for every row.
 --
 -- For a comparison that keeps more of the history, the right move is to drop
--- the youngest cohorts rather than to extend the age — `$common_age` is a
+-- the youngest cohorts rather than to extend the age, `$common_age` is a
 -- parameter so both can be run, and `cohorts_included` records what the choice
 -- cost.
 --

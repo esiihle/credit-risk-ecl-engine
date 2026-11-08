@@ -1,5 +1,5 @@
 # =============================================================================
-# Credit risk ECL engine — configuration
+# Credit risk ECL engine: configuration
 # =============================================================================
 # Every assumption, threshold and modelling choice lives here rather than in
 # code, so it can be read and challenged by someone who does not open a .py
@@ -12,7 +12,7 @@
 #   1. Thresholds are set BEFORE results are known. A limit that moves to
 #      accommodate an outcome was never a limit.
 #   2. No measured figure is recorded in a comment. Comments say how to measure;
-#      a command produces the number. (A sister project published figures typed
+#      a command produces the number. (My scorecard project published figures typed
 #      into a comment that turned out to be wrong by a factor of three.)
 # =============================================================================
 
@@ -28,8 +28,8 @@ data:
 # --- The portfolio being modelled --------------------------------------------
 # Unsecured personal loans: fixed term, monthly instalments, no collateral.
 # Chosen deliberately. With no collateral there is no valuation to model, so
-# LGD stays simple and the IFRS 9 mechanics — staging, PD term structure,
-# discounting — stay in focus. It is also where most South African retail
+# LGD stays simple and the IFRS 9 mechanics: staging, PD term structure,
+# discounting: stay in focus. It is also where most South African retail
 # credit risk teams begin.
 portfolio:
   product: unsecured_personal_loan
@@ -74,9 +74,9 @@ generator:
   # uses, and it is stated here rather than assumed in code.
   default_bucket: 4
   #
-  # CALIBRATION TARGET (not a measured result — rerun to reproduce):
+  # CALIBRATION TARGET (not a measured result, rerun to reproduce):
   # these rates were chosen so the generated book lands near a realistic South
-  # African unsecured personal loan portfolio — roughly 5% 12-month PD and 25%
+  # African unsecured personal loan portfolio, roughly 5% 12-month PD and 25%
   # over a 36-month life, with prime around 2%, near-prime 4-5% and subprime
   # 13-14%. `python scripts/generate_book.py --summary` prints what they
   # actually produce.
@@ -133,7 +133,7 @@ staging:
   default_dpd: 90
 
   # Stage 2: significant increase in credit risk since origination (SICR).
-  # Three triggers, any of which is sufficient — the standard permits a mix of
+  # Three triggers, any of which is sufficient, the standard permits a mix of
   # quantitative and backstop criteria.
   sicr_dpd_backstop: 30            # IFRS 9's rebuttable 30-day presumption
   sicr_relative_pd_increase: 2.0   # lifetime PD at least 2x its value at origination
@@ -173,7 +173,7 @@ validation:
   #
   # This is a change of FORM, not a loosening, and the reason is structural: a
   # lifetime PD over 60 months is the accumulation of 60 monthly estimates, so
-  # its scale — and the absolute error that goes with it — grows with the
+  # its scale, and the absolute error that goes with it, grows with the
   # horizon. Holding a 60-month cumulative to the same absolute tolerance as a
   # 12-month one is silently holding it to a far tighter RELATIVE standard, and
   # the original single threshold did not distinguish the two quantities at all.
@@ -183,7 +183,7 @@ validation:
   # A relative limit is therefore the horizon-neutral way to express it.
   #
   # Added 31 Oct 2026, after the lifetime check failed at 0.0131 against the
-  # absolute 0.010 on a smaller book while passing at 0.0076 on the full one —
+  # absolute 0.010 on a smaller book while passing at 0.0076 on the full one,
   # recorded here because a threshold changed after seeing a result deserves
   # the reason in writing. See methodology §5.6.
   max_lifetime_pd_relative_error: 0.15
@@ -192,7 +192,7 @@ validation:
   #
   # The two tolerances above judge how accurate the age-aware PD estimate is.
   # That question only has an answer if the age-aware model was actually
-  # estimated — and on a small book it is not. Cutting by segment AND age band
+  # estimated, and on a small book it is not. Cutting by segment AND age band
   # AND arrears bucket multiplies the cells, and below a certain size most of
   # them fall back to the segment's pooled rate, so "age_aware" becomes the
   # pooled model wearing a different name.
@@ -201,7 +201,7 @@ validation:
   # On the committed 400-account sample, 60.4% do, and the thinnest cell has a
   # single transition behind it.
   #
-  # This threshold is about the INPUT — was the model estimated? — not about
+  # This threshold is about the INPUT, was the model estimated?, not about
   # whether it passed. Above this share the accuracy gate reports "not
   # assessed" rather than "failed", because those are different statements and
   # a pipeline that conflates them is lying about which one it found.
@@ -281,7 +281,7 @@ validation:
   #
   # So every input gate can pass while ECL is 14-18% out. Demanding 2% was not
   # a gate on the ECL calculation; it was a second, 7.5x stricter, implicit
-  # gate on Phase 4's PD — and the engine duly missed it at -2.25% with
+  # gate on Phase 4's PD, and the engine duly missed it at -2.25% with
   # arithmetic that reconciles to 1.8e-11 and inputs comfortably inside their
   # own tolerances.
   #
@@ -296,7 +296,7 @@ validation:
   #
   # Changed 6 Nov 2026, after a result was seen. Recorded here because this
   # project's rule is that a limit which moves to accommodate a result was
-  # never a limit — and the defence is that the FORM was wrong, not that the
+  # never a limit, and the defence is that the FORM was wrong, not that the
   # number was inconvenient: the old gate was replaced by a stricter one on
   # this phase's actual work, not merely loosened. See methodology §7.3.
   max_ecl_relative_error: 0.15
@@ -307,14 +307,14 @@ validation:
   #
   # Segment and origination month are drawn INDEPENDENTLY in the generator, so
   # the true vintage effect on this book is exactly zero. The engine must
-  # therefore find nothing — and an MI pack that invents a trend costs a credit
+  # therefore find nothing, and an MI pack that invents a trend costs a credit
   # committee a policy change it did not need, which is a more expensive error
   # than a provision a few percent out.
   #
   # 0.5pp per year is the allowance for sampling noise in the fitted slope. With
   # 48 cohorts of ~420 accounts at a ~5% twelve-month default rate, the standard
   # error on the slope is about 0.15pp per year, so this is roughly 3 standard
-  # errors — the same convention as the LGD gate, and set the same way, from the
+  # errors, the same convention as the LGD gate, and set the same way, from the
   # sample size rather than from a result.
   max_spurious_vintage_slope_per_year: 0.005
   #
@@ -328,7 +328,7 @@ validation:
   #
   # Vintage analysis divides the book by origination month, so the COHORT is
   # the sample, not the book. On the 400-account sample that is 8 accounts per
-  # cohort and 0.4 expected defaults in each — a regime where neither statistic
+  # cohort and 0.4 expected defaults in each, a regime where neither statistic
   # above means anything.
   #
   # Two conditions, because the two kinds of gate fail for different reasons,
@@ -336,7 +336,7 @@ validation:
   # result:
   #
   #   TREND gates (the fitted slope). Applied only when the standard error of
-  #   the slope is at most half the tolerance — the same "twice as precise as
+  #   the slope is at most half the tolerance, the same "twice as precise as
   #   the limit it is held to" rule as the LGD gate. Measured: 0.135pp/yr on
   #   the full book, 0.92pp/yr on the sample against a 0.5pp/yr limit. On the
   #   sample the fitted slope came out -1.56pp/yr, which is 1.7 standard errors
@@ -344,7 +344,7 @@ validation:
   #   designed to catch invented trends.
   #
   #   DISPERSION gates (chi-square and the variance ratio). Applied only when
-  #   the expected number of defaults per cohort is at least 5 — the textbook
+  #   the expected number of defaults per cohort is at least 5, the textbook
   #   validity condition for a chi-square, and not a threshold invented here.
   #   Measured: 21.5 on the full book, 0.40 on the sample.
   #

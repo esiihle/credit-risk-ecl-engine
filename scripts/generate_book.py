@@ -41,8 +41,7 @@ def summarise(accounts, performance, truth, config):
     by_segment = accounts.groupby("segment").agg(
         accounts=("account_id", "size"),
         mean_principal=("principal", "mean"),
-        mean_rate=("annual_rate", "mean"),
-    )
+        mean_rate=("annual_rate", "mean"))
     for segment, row in by_segment.iterrows():
         lines.append(f"    {segment:<12} {int(row['accounts']):>6,} accounts   "
                      f"avg {row['mean_principal']:>9,.0f}   "
@@ -97,9 +96,9 @@ def main():
 
     rng = set_seed(config.get("seed", 42))
 
-    print(f"\nGenerating {config['portfolio']['n_accounts']:,} accounts "
+    print(f"\nGenerating {config['portfolio']['n_accounts']: } accounts "
           f"({config['portfolio']['product']})")
-    print("  SYNTHETIC DATA — the true PD, EAD and LGD are known by "
+    print("  SYNTHETIC DATA, the true PD, EAD and LGD are known by "
           "construction\n")
 
     started = time.time()

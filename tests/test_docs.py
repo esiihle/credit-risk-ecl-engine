@@ -2,9 +2,9 @@
 Tests on the documentation itself.
 
 This project's stated rule is that no figure appears in a document unless a
-command regenerates it. That rule was written after a sister project published
+command regenerates it. That rule was written after my scorecard project published
 numbers typed into a comment that were wrong by a factor of three and survived
-a green suite for two days — and it is worth nothing unless something checks it.
+a green suite for two days, and it is worth nothing unless something checks it.
 
 Nothing did, until the Phase 5 roadmap update claimed "the README's phase table
 and test count are checked by the test suite" and the claim turned out to be
@@ -13,8 +13,8 @@ tested and committed while the roadmap still listed Phase 1 as `next`.
 
 So this file exists to make that claim true.
 
-WHAT THIS FILE MUST NOT DO. The sister project's version of this file asserted
-`"0.2751" in readme` — it hardcoded the very numbers it was supposed to verify,
+WHAT THIS FILE MUST NOT DO. My scorecard project's version of this file asserted
+`"0.2751" in readme`, it hardcoded the very numbers it was supposed to verify,
 which meant that when the README was wrong, the test DEFENDED the error rather
 than catching it. So there are no numeric literals from the documents here.
 Every figure is derived from the code or the other document and compared.
@@ -44,7 +44,7 @@ def count_test_functions():
     Counted by parsing rather than by running pytest in a subprocess: the count
     has to be available without recursively invoking the suite that contains
     this test. Exact only while no test is parametrised, which the test below
-    asserts — if a `parametrize` ever appears, the collected count diverges
+    asserts, if a `parametrize` ever appears, the collected count diverges
     from the function count and this measure would silently become wrong.
     """
     total = 0
@@ -61,20 +61,20 @@ def test_no_test_is_parametrised_so_the_count_is_exact():
     """Guards the measure the next test depends on.
 
     If this ever fails, the fix is to count collected tests with
-    `pytest --collect-only` rather than to adjust the number in the README —
+    `pytest --collect-only` rather than to adjust the number in the README,
     the problem would be that the function count had stopped meaning the test
     count, not that the README was wrong.
     """
     # Matched as a DECORATOR, not as a word. The first version searched for
     # the bare string and failed on this very file, which mentions parametrize
-    # twice in its own prose — a check that could not tell a use from a
+    # twice in its own prose, a check that could not tell a use from a
     # mention, which is this project's recurring error in miniature.
     decorator = re.compile(r"^\s*@(?:pytest\.)?mark\.parametrize", re.M)
     offenders = [p.name for p in TESTS_DIR.glob("test_*.py")
                  if decorator.search(p.read_text(encoding="utf-8"))]
     assert not offenders, (
         f"{offenders} use parametrize, so counting functions no longer gives "
-        f"the collected test count — see this test's docstring")
+        f"the collected test count, see this test's docstring")
 
 
 def test_the_readme_test_count_matches_the_actual_number_of_tests():
@@ -112,8 +112,8 @@ def test_the_readme_and_the_roadmap_agree_on_which_phases_are_done():
 def test_the_phases_marked_done_are_contiguous_from_zero():
     """A gap would mean a phase was skipped or a mark was mistyped.
 
-    Phases build on each other — Phase 5's exposure schedule joins Phase 4's
-    per-account PD — so "0,1,2,4 done" is not a state this project can be in.
+    Phases build on each other, Phase 5's exposure schedule joins Phase 4's
+    per-account PD, so "0,1,2,4 done" is not a state this project can be in.
     """
     done = _phases_marked_done(README.read_text(encoding="utf-8"))
     assert done == set(range(max(done) + 1)), (
@@ -204,4 +204,4 @@ def test_every_committed_chart_is_one_the_chart_script_produces():
     orphans = committed - produced
     assert not orphans, (
         f"{sorted(orphans)} are in docs/charts/ but scripts/make_charts.py "
-        f"does not produce them — a chart nothing regenerates will go stale")
+        f"does not produce them, a chart nothing regenerates will go stale")

@@ -1,5 +1,5 @@
 """
-Phase 5 — loss given default and exposure at default.
+Phase 5, loss given default and exposure at default.
 
 The two remaining inputs to ECL, and they could not be less alike.
 
@@ -27,7 +27,7 @@ SQL_FILES = ["14_lgd_estimate.sql", "15_ead_schedule.sql"]
 def build(connection, config, verbose=True):
     """Estimate LGD by segment and project exposure to maturity."""
     # The horizon has to reach the longest remaining term on the book, or the
-    # lifetime ECL in Phase 6 would be truncated for the longest loans — and
+    # lifetime ECL in Phase 6 would be truncated for the longest loans, and
     # truncating a lifetime measure understates it, which is the direction a
     # provision must never be wrong in by accident.
     longest = int(db.read_sql(
@@ -41,7 +41,7 @@ def build(connection, config, verbose=True):
 
     if verbose:
         print(f"  exposure projected to {longest} months "
-              f"({db._count(connection, 'ead_schedule'):,} account-months)")
+              f"({db._count(connection, 'ead_schedule'): } account-months)")
     return longest
 
 
@@ -131,7 +131,7 @@ def validate(connection, config, accounts=None):
     # BEFORE ANY ERROR EXISTS IN THIS FUNCTION.
     #
     # The question is how precise the estimate is, which is a property of the
-    # SAMPLE — the number of resolved defaults and the spread of their losses —
+    # SAMPLE, the number of resolved defaults and the spread of their losses,
     # and nothing to do with whether the estimate turned out well. Computing
     # the error first and then deciding whether to judge it would make this an
     # escape hatch for a bad result instead of an honest statement about a
@@ -184,7 +184,7 @@ def validate(connection, config, accounts=None):
                        <= se_limit else "fail"),
         },
         {
-            # Not a quality gate on the engine — a gate on the demonstration.
+            # Not a quality gate on the engine, a gate on the demonstration.
             # If the naive estimate stopped being biased, the phase would have
             # nothing to show, and silence would be the wrong response.
             "check": "the naive estimate is biased upward, as predicted",

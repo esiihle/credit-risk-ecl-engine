@@ -1,5 +1,5 @@
 """
-Phase 5 tests — loss given default and exposure at default.
+Phase 5 tests, loss given default and exposure at default.
 
 The headline is `test_the_naive_lgd_is_biased_upward_and_materially_so`. Every
 previous phase asserted that the engine gets the right answer; this one also
@@ -43,7 +43,7 @@ def built(config, tmp_path_factory):
     LGD rests on defaults, not accounts, and only the RESOLVED ones count. At a
     ~16% ever-default rate with roughly a third of workouts still open, 14,000
     accounts yield around 300 resolved defaults in the smallest segment, for a
-    standard error near 0.008 — inside the 0.010 precision requirement that
+    standard error near 0.008, inside the 0.010 precision requirement that
     makes the absolute materiality gate assessable.
 
     14,000 rather than 8,000 deliberately. Measured, 8,000 lands at a standard
@@ -179,7 +179,7 @@ def test_the_naive_lgd_is_biased_upward_and_materially_so(built):
 
     naive_overstatement = bias["lgd_naive"] - bias["lgd_resolved"]
     assert naive_overstatement > 0.01, (
-        f"naive LGD overstated by only {naive_overstatement:.4f} — if the "
+        f"naive LGD overstated by only {naive_overstatement:.4f}, if the "
         f"censoring bias has gone, the recovery generator has stopped "
         f"accumulating recoveries over the workout period")
 
@@ -222,7 +222,7 @@ def test_exposure_matches_the_annuity_formula_to_the_cent(built):
 
     They implement the same closed-form annuity formula in two languages, so
     agreement is evidence of correct transcription. Any disagreement at all is
-    a bug in one of them — there is no sampling noise in arithmetic.
+    a bug in one of them, there is no sampling noise in arithmetic.
     """
     connection, sized = built
     result = lgd.ead_check(connection, sized)
@@ -236,7 +236,7 @@ def test_exposure_falls_every_month_and_ends_at_zero(built):
     """An amortising term loan's balance is monotone down to zero at maturity.
 
     This is the property that makes EAD the easy input, and the property a
-    revolving product would NOT have — which is why Phase 0 chose a term
+    revolving product would NOT have, which is why Phase 0 chose a term
     product. If it ever failed, the amortisation would be wrong in a way that
     changes lifetime ECL for every account.
     """
@@ -309,7 +309,7 @@ def test_run_sql_file_only_binds_the_parameters_a_file_uses(config, tmp_path):
 
     Phase 5 runs two SQL files in one step, and only the second takes a
     parameter. Passing both files the same arguments made DuckDB reject the
-    first with a count mismatch — so the loader now binds only what each file
+    first with a count mismatch, so the loader now binds only what each file
     references, and ignores `$name` appearing in commentary.
 
     Worth a test because the failure mode is a loud error today and a silently
@@ -346,7 +346,7 @@ def test_a_book_too_imprecise_to_judge_reports_not_assessed_not_failed(config, t
     With ~10 resolved defaults per segment the standard error is near 4pp, so
     an estimate lands more than 2pp from the truth roughly half the time by
     chance. Reporting that as a FAILURE would be reporting "I could not
-    determine the answer" as "the answer is no" — the error this project has
+    determine the answer" as "the answer is no", the error this project has
     now hit in four different places, and the one worth being loudest about.
     """
     sized = dict(config)
@@ -399,7 +399,7 @@ def test_a_book_precise_enough_is_actually_assessed(built):
     absolute = checks[checks["check"].str.contains("matches the truth")].iloc[0]
 
     assert absolute["assessable"], (
-        f"a {sized['portfolio']['n_accounts']:,}-account book should support "
+        f"a {sized['portfolio']['n_accounts']: }-account book should support "
         f"the absolute gate; worst standard error was "
         f"{estimates['standard_error'].max():.5f}")
     assert absolute["status"] == "pass"
@@ -425,12 +425,12 @@ def test_assessability_is_decided_from_precision_not_from_the_error(config):
 
     # Matching on the ASSIGNMENT, not on the bare words. The first version of
     # this assertion searched for "absolute_error" and matched the config key
-    # `max_lgd_absolute_error` — reading a threshold's NAME as evidence that
+    # `max_lgd_absolute_error`, reading a threshold's NAME as evidence that
     # the error had been computed. It failed on correct code, which is the
     # cheap direction for a check to be wrong in, but it was still a check
     # measuring something other than what it claimed.
     assert 'estimates["absolute_error"]' not in before, (
-        "the absolute error is computed before assessability is decided — the "
+        "the absolute error is computed before assessability is decided, the "
         "gate can now see the result it would be excusing")
     assert 'estimates["errors_in_standard_errors"]' not in before
 
@@ -442,7 +442,7 @@ def test_an_empty_recovery_table_is_created_rather_than_skipped(config, tmp_path
     """A book with no defaults still needs the table.
 
     Written because the loader's first version skipped the write when there
-    were no recoveries, which left the table absent instead of empty — and the
+    were no recoveries, which left the table absent instead of empty, and the
     Phase 5 SQL then failed with a catalog error rather than returning zero
     rows. "No defaults" and "no recovery table" are different facts, and only
     one of them is a problem.

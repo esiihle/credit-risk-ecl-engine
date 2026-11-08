@@ -1,5 +1,5 @@
 -- =============================================================================
--- portfolio_mi — the book month by month
+-- portfolio_mi, the book month by month
 -- =============================================================================
 -- Calendar-time reporting: how the book's stage mix, arrears mix and default
 -- flow have moved. This is the view a credit committee actually sits in front

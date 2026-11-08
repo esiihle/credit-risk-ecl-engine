@@ -1,5 +1,5 @@
 -- =============================================================================
--- roll_rate_segmented — the same matrix, cut the ways that matter
+-- roll_rate_segmented, the same matrix, cut the ways that matter
 -- =============================================================================
 -- One long table rather than three wide ones, keyed by `cut_type` and
 -- `cut_value`. A report filters to the cut it wants; adding a fourth cut later
