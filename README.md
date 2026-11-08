@@ -51,14 +51,16 @@ them is wrong — and that is a finding, not a mystery.
 
 Every table and report says the book is synthetic.
 
-## Current state — Phase 6 complete
+## Current state — Phase 7 complete
 
 Book, answer key, warehouse, CI, a data mart, roll rates, IFRS 9 staging, a
 **PD term structure 9x more accurate per account than a pooled curve**, LGD from
 resolved collections workouts only, an exposure schedule exact to the cent — and
-now **the provision itself: per-account ECL by IFRS 9 stage, with the arithmetic
-reconciled to the answer key at 1.8e-11 across 8,256 accounts.** Portfolio
-coverage 4.27%, on a 2.2% / 25.1% / 65.1% stage ladder. **118 tests pass.**
+the provision itself — per-account ECL by IFRS 9 stage, reconciled to the answer
+key at 1.8e-11 — and now **48 monthly vintage cohorts with the portfolio MI to
+read them, which catches the naive comparison inventing 4pp a year of credit
+improvement on a book that has none.** Portfolio coverage 4.27%, on a
+2.2% / 25.1% / 65.1% stage ladder. **137 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -66,7 +68,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 118 tests
+pytest                                   # 137 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -86,8 +88,8 @@ anything.
 | **4** | PD term structure, 12-month vs lifetime | **done** |
 | **5** | LGD from resolved workouts, EAD by amortisation | **done** |
 | **6** | ECL calculation and discounting at the EIR | **done** |
-| 7 | Vintage curves and portfolio MI | next |
-| 8 | SAS `PROC SQL` implementation + reconciliation | |
+| **7** | Vintage curves, portfolio MI and charts | **done** |
+| 8 | SAS `PROC SQL` implementation + reconciliation | next |
 | 9 | Documentation and study guide | |
 
 Phase 4 is the join to the scorecard project: that one produces a PD, this one
@@ -177,6 +179,44 @@ estimation error — mostly the cost of approximating a continuous seasoning
 hazard with five age bands — and the engine *under*-provisions, which is the
 direction worth reporting rather than hiding.
 
+### What Phase 7 found
+
+![Vintage curves and the trap in reading them](docs/charts/vintage_triangle.png)
+
+**The naive vintage comparison invents a trend that does not exist.** Every
+cohort shown at its own latest age slopes down at **−4.03pp per year**
+(correlation −0.85) — four straight years of apparent credit improvement, the
+kind of number that gets a lending policy loosened. Compare every cohort at the
+same age and the slope is **−0.09pp per year**. **97.8% of the signal is the
+observation window**, and the true vintage effect on this book is zero by
+construction, because segment and origination month are drawn independently.
+
+Third appearance of one mechanism: Phase 2's roll rates were biased by the end
+of an account's series, Phase 5's LGD by the beginning of a workout, and this by
+the end of the observation window. Each time the naive denominator included
+outcomes that had not happened yet.
+
+**Monthly cohorts could not have detected a real effect anyway.** The spread
+between cohorts is indistinguishable from chance (observed SD ÷ expected SD =
+0.948; chi-square p = 0.659). More usefully, the smallest difference this book
+could detect at 80% power is **4.29pp monthly**, 2.48pp quarterly, 1.24pp
+annual — so against a 5.16% base rate a monthly triangle cannot see anything
+smaller than 83% of the base rate itself. The right response to a noisy monthly
+chart is to group the cohorts, not to explain the wiggles.
+
+**Calendar time shows a deterioration that is only the book growing up.**
+
+![The same book read in calendar time](docs/charts/calendar_vs_cohort.png)
+
+Arrears went 7.56% → 15.00% while average age went 3.0 → 28.3 months
+(correlation +0.85). Cohort quality never changed. This is the age–period–cohort
+problem: age + vintage = period exactly, so the three effects are not separately
+identifiable without an outside assumption. Here two are zero by construction,
+which is the only reason the decomposition can be checked at all — on a real
+book it cannot be, and the honest statement to a committee is that calendar
+movement has at least two explanations and the data will not choose between
+them.
+
 ## Two implementations, reconciled
 
 Phase 8 reimplements the engine in SAS `PROC SQL` — what South African bank
@@ -196,7 +236,7 @@ src/            config, generate (the book + its answer key), db (DuckDB harness
                 mart, rollrate, staging, pd, lgd — one module per phase
 sql/            the engine's logic, as SQL — readable, reviewable, portable
 scripts/        generate_book.py · run_pipeline.py
-tests/          118 tests; the answer key is checked against the simulation,
+tests/          137 tests; the answer key is checked against the simulation,
                 every mart quality check is shown to fail when it should, and
                 the known biases are asserted to still be there
 docs/           OVERVIEW · ROADMAP · methodology

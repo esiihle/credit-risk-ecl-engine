@@ -22,6 +22,7 @@ from src import db, mart, rollrate, staging
 from src import pd as pdmod
 from src import lgd as lgdmod
 from src import ecl as eclmod
+from src import vintage as vintagemod
 
 # The build plan, in order. Each entry is (phase, name, what it produces).
 # This list is the roadmap in executable form, and `--status` prints it.
@@ -241,6 +242,34 @@ def main():
         print("  because the estimates feeding it could not be either. The")
         print("  arithmetic gate, which does not depend on them, passed.")
 
+    # --- Phase 7: vintage curves and portfolio MI ---------------------------
+    print()
+    print("Stage 7 — vintage curves and portfolio MI")
+    try:
+        vintagemod.build(connection, config)
+    except Exception as error:
+        print(f"  CANNOT BUILD THE VINTAGE MI: {error}")
+        connection.close()
+        return 1
+
+    print()
+    print(vintagemod.vintage_report(connection, config))
+
+    vintage_checks, _, _, _ = vintagemod.validate(connection, config)
+    if (vintage_checks["status"] == "fail").any():
+        print()
+        print("  STOPPING. The MI reported something the book does not contain.")
+        print("  A false trend costs a credit committee a policy change it did")
+        print("  not need, which is worse than no MI at all.")
+        connection.close()
+        return 1
+
+    if (vintage_checks["status"] == "not assessed").any():
+        print()
+        print("  Continuing: some vintage checks could not be assessed on a")
+        print("  book whose cohorts hold only a handful of accounts, which is")
+        print("  not the same as failing them. The structural checks applied.")
+
     connection.close()
 
     print()
@@ -252,15 +281,15 @@ def main():
     # have reported a stage that had just run and passed as NOT YET BUILT. A
     # status display that can disagree with the run it is describing is worse
     # than no status display.
-    highest_built = 6
+    highest_built = 7
     for phase, name, produces in STAGES:
         status = "built" if phase <= highest_built else "NOT YET BUILT"
         print(f"  Phase {phase} — {name:<28} {status}")
     print()
-    print("Phase 6 complete: per-account ECL by IFRS 9 stage, with the")
-    print("arithmetic reconciled to the answer key at 1.8e-11 on exact inputs.")
-    print("Portfolio coverage 4.27%; the staging cliff measured at 1.63x for")
-    print("accounts in no arrears and 1.00x for those 60-89 days down.")
+    print("Phase 7 complete: 48 monthly vintages, compared at a common age.")
+    print("The naive comparison invents 4.03pp a year of improvement on a book")
+    print("with no vintage effect at all; 97.8% of that signal is the")
+    print("observation window. Charts: python scripts/make_charts.py")
     print()
     return 0
 

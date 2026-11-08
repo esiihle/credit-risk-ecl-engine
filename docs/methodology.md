@@ -1267,3 +1267,217 @@ and say why in the query.
 - **No PD term structure beyond the contractual term**, which is correct for a
   term loan and would be the hard question for a revolving product.
 - **LGD is not discounted**, carried forward from §6.6.
+
+---
+
+## 8. Vintage curves and portfolio MI (Phase 7)
+
+Two views of the same book, answering different questions.
+
+**Calendar time** (`portfolio_mi`) says what the book looks like now and how it
+got here. It cannot say why. A rising Stage 2 share means lending has got
+worse, or it means last year's growth is reaching the ages where arrears
+appear, and nothing in calendar time separates those.
+
+**Cohort time** (`vintage_curves`) holds age fixed and can. Group accounts by
+the month they were originated and track each cohort's cumulative default rate
+by age.
+
+This phase is the first in the project whose gates check for **false
+positives**. Every earlier phase asked whether an estimate was accurate enough;
+this one asks whether the MI invents something that is not there. An MI pack
+that manufactures a trend costs a credit committee a policy change it did not
+need — a more expensive error than a provision a few percent out.
+
+The check is unusually sharp because the truth is known exactly: the generator
+draws segment and origination month **independently**, so every cohort is the
+same book and the true vintage effect is zero.
+
+### 8.1 Right-censoring, and the third of its family here
+
+A cohort originated in December 2024 has been watched for 12 months at this
+reporting date. One from January 2021 has been watched for 59. Their cumulative
+default rates are not comparable, and the newer one always looks better,
+because less of its life has happened yet.
+
+| phase | measure | bias comes from |
+|---|---|---|
+| 2 | roll rates | the **end** of an account's series |
+| 5 | LGD | the **beginning** of a workout |
+| 7 | vintage curves | the **end** of the observation window |
+
+Every time, the naive denominator included observations whose outcome is not
+yet known. Every time, the bias ran in a direction the mechanism predicts
+before any data is seen.
+
+### 8.2 The same question, answered twice
+
+| | trend in 12-month default rate | correlation with origination month |
+|---|---|---|
+| naive — each cohort at its own latest age | **−4.03pp per year** | −0.853 |
+| fair — every cohort at 12 months | **−0.09pp per year** | −0.099 |
+
+**97.8% of the apparent improvement is artefact.** The naive reading says
+lending quality improved by four points a year for four straight years, with a
+correlation of −0.85 — the kind of number that gets a credit policy loosened.
+The truth is a flat line. The 2021-04 cohort's naive rate sits **18.48pp** above
+its 12-month rate, not because it lent badly but because it has been watched 44
+months longer.
+
+The fair comparison costs information: restricting 48 cohorts to a common 12
+months discards four years of observation on the oldest. That is the trade, and
+the alternative is not more information — it is a number that means something
+different in every row. For a comparison that keeps more history, the move is to
+**drop the youngest cohorts**, not to extend the age, so `$common_age` is a
+parameter and `cohorts_included` records what the choice cost.
+
+The comparison age is **derived, not configured**: it is the youngest cohort's
+observation window. Pinned in config it would silently start either excluding
+cohorts or comparing censored ones as soon as the reporting date moved, and
+neither would announce itself.
+
+### 8.3 Is the remaining spread real? No — and monthly cohorts could not see it
+
+| | |
+|---|---|
+| pooled 12-month default rate | 5.16% |
+| observed SD across 48 cohorts | 0.01028 |
+| expected SD from binomial sampling alone | 0.01084 |
+| **ratio** | **0.948** |
+| chi-square | 42.50 on 47 df, **p = 0.659** |
+
+Indistinguishable from chance, which is correct — there is nothing there.
+
+The more useful number is what this book **could** have detected. Smallest
+difference between two cohorts at 80% power:
+
+| cohorts grouped | minimum detectable difference |
+|---|---|
+| monthly (~420 accounts) | **4.29pp** |
+| quarterly | 2.48pp |
+| annual | 1.24pp |
+
+Against a 5.16% base rate, a monthly vintage chart cannot see anything smaller
+than **83% of the base rate itself**. It is a picture of sampling noise with a
+trend line through it. Quarterly is the minimum defensible grouping here, and
+annual is the first that could detect a 1pp shift.
+
+This is the practical conclusion of the phase, and it is the opposite of what a
+vintage chart invites: the right response to a noisy monthly triangle is to
+group the cohorts, not to explain the wiggles.
+
+### 8.4 Calendar time shows a deterioration that is only maturity
+
+Over 54 settled months on a book whose cohort quality never changed:
+
+| | start | end |
+|---|---|---|
+| average age of the book | 3.0 months | 28.3 months |
+| accounts in arrears | 7.56% | 15.00% |
+
+Correlation of average age with arrears **+0.850**, with Stage 2 share
+**+0.902**. Arrears doubled. Nothing about lending changed. In calendar time
+that reads as deterioration; in cohort time it is a book growing up.
+
+This is the age–period–cohort problem in its simplest form. Age, period and
+cohort are linearly dependent — age + vintage = period, exactly — so the three
+effects cannot be separately identified from observational data without an
+outside assumption. Here two of them are zero by construction, which is the only
+reason the decomposition can be checked at all. On a real book it cannot be, and
+the honest statement to a committee is that calendar-time movement has at least
+two explanations and the data alone will not choose between them.
+
+### 8.5 Charts, and the rule they have to obey
+
+`scripts/make_charts.py` regenerates everything in `docs/charts/` from the
+warehouse. No chart is edited, exported by hand, or committed without rerunning
+it, and each stamps its reporting date, book size and the command that produced
+it — because an image is the easiest place in a repository to keep showing
+yesterday's numbers while nothing complains.
+
+Three layout defects were fixed in the making, all of the same kind — something
+drawn where nothing knew it was:
+
+- **`fig.text` ignores constrained layout.** The title band was drawn straight
+  through the axes: subtitle across the plot area, provenance stamp through the
+  x-axis label. Constrained layout accounts for `suptitle` and nothing else, so
+  the bands are now reserved explicitly via the layout engine's `rect`,
+  computed from how many lines the subtitle wraps to.
+- **A 100% stacked stage mix spent the whole panel on the part that does not
+  move.** Stage 1 holds 92–97% of the balance throughout, leaving Stage 2 and 3
+  as slivers a pixel high. Replaced with just the two stages under scrutiny, on
+  a scale that fits them.
+- **A bar chart of the staging cliff started its axis at 0.9.** A 1.00x bar
+  looked substantial and a 1.63x bar looked seven times a 1.20x one. The bars
+  are now drawn from a baseline of 1.0, so their length is the jump itself.
+
+Also carried forward from a sister project: never call `fig.autofmt_xdate()`
+alongside constrained layout — it disables it without saying so.
+
+### 8.6 The cohort is the sample, not the book
+
+Caught by rehearsing CI in a clean room before committing — the full book
+passes everything, and the committed 400-account sample failed two Phase 7
+gates.
+
+Vintage analysis divides the book by origination month, so the **cohort** is
+the sample. A book ample for a portfolio statistic can be hopeless for a cohort
+one:
+
+| | full book | committed sample |
+|---|---|---|
+| accounts per cohort | 417 | 8.3 |
+| expected defaults per cohort | 21.5 | **0.40** |
+| standard error of the fitted slope | 0.135pp/yr | **0.92pp/yr** |
+| fitted fair slope | −0.09pp/yr | −1.56pp/yr |
+
+On the sample the fitted slope breaches the 0.5pp/yr limit — and sits 1.7
+standard errors from zero, which is no evidence of anything. **A gate built to
+catch invented trends was itself reporting noise.**
+
+Two conditions now decide whether each kind of gate applies, both standard
+tests read off the sample rather than the result:
+
+- **Trend gates** (the fitted slope, the artefact share): the slope's standard
+  error must be at most **half the tolerance** — the same "twice as precise as
+  the limit it is held to" rule as the Phase 5 LGD gate.
+- **Dispersion gates** (chi-square, variance ratio): at least **5 expected
+  defaults per cohort**, the textbook validity condition for a chi-square, not
+  a threshold invented here.
+
+The **structural** checks — that no censored cell is used in the comparison,
+and that the triangle ties to the fact table — are arithmetic rather than
+inference, so they apply at every book size and are what keeps the sample run
+meaningful.
+
+This is the sixth appearance of one error:
+
+| # | where | reported as | actually was |
+|---|---|---|---|
+| 1 | `git check-ignore` exit 128 | file not ignored | ran outside a work tree |
+| 2 | scorecard optimiser `success: True` | converged | failed to converge |
+| 3 | PD gate on the sample | inaccurate | 60% fallback cells |
+| 4 | absolute LGD gate on the sample | inaccurate | SE 4× the tolerance |
+| 5 | ECL backstop on the sample | inaccurate | its inputs were unassessable |
+| 6 | vintage gates on the sample | a false trend | 8 accounts per cohort |
+
+Instances 3 to 6 are the same mechanism in four places, and the general form
+stated in §7.6 — *if the inputs could not be assessed, the output cannot be* —
+now has a sibling: **a gate is assessable only when the sample supports the
+statistic it is built from.**
+
+### 8.7 What this phase does not do
+
+- **No quarterly or annual cohort tables**, even though §8.3 concludes they are
+  what this book can support. The minimum detectable effect is computed for
+  them; the grouped triangles are not built. That is the obvious next
+  extension and it is small.
+- **No macro overlay on the cohort curves**, which is where a real vintage
+  analysis would go next: a cohort originated into a rate-hiking cycle behaves
+  differently, and separating that from cohort quality needs the period effect
+  this book does not have.
+- **No account-level survival model.** The triangle is a cumulative incidence,
+  not a hazard, and it flattens at older ages partly because accounts mature
+  and leave. Cross-cohort comparison stays valid because term mix is drawn
+  independently of origination month, but on a real book where it is not, the
+  honest tool is a survival model with term as a covariate.

@@ -20,7 +20,7 @@ a per-account answer key. **78 tests green.**
 - [x] Phase 4 — PD term structure
 - [x] Phase 5 — LGD and EAD
 - [x] Phase 6 — ECL calculation
-- [ ] Phase 7 — Vintage and portfolio MI
+- [x] Phase 7 — Vintage and portfolio MI
 - [ ] Phase 8 — SAS implementation and reconciliation
 - [ ] Phase 9 — Documentation and study guide
 
@@ -37,7 +37,7 @@ a per-account answer key. **78 tests green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 118 tests
+pytest                                    # 137 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -48,6 +48,99 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-11-08 — Phase 7: vintage curves, and MI that invents a trend
+
+First phase whose gates check for FALSE POSITIVES. Every earlier one asked
+whether an estimate was accurate enough; this one asks whether the MI reports
+something the book does not contain. An MI pack that manufactures a trend costs
+a credit committee a policy change it did not need — more expensive than a
+provision a few percent out.
+
+The check is unusually sharp because the truth is exact: the generator draws
+segment and origination month **independently**, so every cohort is the same
+book and the true vintage effect is zero.
+
+#### The result: the naive comparison invents 4pp a year
+| | trend in 12-month default rate | correlation |
+|---|---|---|
+| naive — each cohort at its own latest age | **-4.03pp / year** | -0.853 |
+| fair — every cohort at 12 months | **-0.09pp / year** | -0.099 |
+
+**97.8% of the apparent improvement is artefact.** Four straight years of
+apparent credit improvement at r=-0.85 — the kind of number that gets a lending
+policy loosened — against a flat truth. The 2021-04 cohort's naive rate sits
+18.48pp above its 12-month rate, not because it lent badly but because it has
+been watched 44 months longer.
+
+Third appearance of one mechanism:
+
+| phase | measure | bias comes from |
+|---|---|---|
+| 2 | roll rates | the **end** of an account's series |
+| 5 | LGD | the **beginning** of a workout |
+| 7 | vintage curves | the **end** of the observation window |
+
+Every time the naive denominator included outcomes that had not happened yet,
+and every time the direction was predictable from the mechanism before
+measuring.
+
+#### Monthly cohorts could not have seen a real effect anyway
+Spread between cohorts: observed SD 0.01028 against 0.01084 expected from
+binomial sampling alone — ratio **0.948**, chi-square 42.50 on 47 df,
+**p = 0.659**. Nothing there, correctly.
+
+Smallest difference detectable at 80% power:
+
+| grouping | minimum detectable |
+|---|---|
+| monthly (~420 accounts) | **4.29pp** |
+| quarterly | 2.48pp |
+| annual | 1.24pp |
+
+Against a 5.16% base rate, a monthly triangle cannot see anything smaller than
+**83% of the base rate itself**. It is a picture of sampling noise with a trend
+line through it. The right response to a noisy monthly chart is to group the
+cohorts, not to explain the wiggles — which is the opposite of what the chart
+invites.
+
+#### Calendar time shows deterioration that is only maturity
+Over 54 settled months: average age 3.0 -> 28.3 months, arrears 7.56% ->
+15.00%, correlation +0.850 (Stage 2 share, +0.902). Arrears doubled; nothing
+about lending changed.
+
+The age-period-cohort problem in its simplest form: age + vintage = period
+exactly, so the three effects are not separately identifiable without an
+outside assumption. Here two are zero by construction, which is the only reason
+the decomposition can be checked at all. On a real book it cannot be, and the
+honest line to a committee is that calendar movement has at least two
+explanations and the data will not choose between them.
+
+#### The first charts in the repo
+`scripts/make_charts.py` regenerates `docs/charts/` from the warehouse; each
+image stamps its reporting date, book size and the command that produced it.
+Two new tests keep the rule enforceable: every image a document references must
+exist, and nothing may sit in `docs/charts/` that the script does not produce —
+a hand-exported image looks identical to a generated one and is exactly the
+figure that goes stale.
+
+Three layout defects fixed in the making, all the same kind — something drawn
+where nothing knew it was:
+- **`fig.text` ignores constrained layout.** The title band drew straight
+  through the axes: subtitle across the plot area, stamp through the x-axis
+  label. Bands are now reserved via the layout engine's `rect`, sized from how
+  many lines the subtitle wraps to.
+- **A 100% stacked stage mix spent the panel on the part that does not move.**
+  Stage 1 is 92-97% throughout, leaving Stages 2 and 3 a pixel high. Replaced
+  with just the two stages under scrutiny on a scale that fits them.
+- **The staging-cliff bars started at 0.9**, so a 1.00x bar looked substantial.
+  Drawn from a baseline of 1.0 now, so bar length is the jump itself.
+
+#### Next
+Phase 8 — the SAS `PROC SQL` implementation and the reconciliation harness: the
+same ECL computed twice, in two languages, tied out to the cent.
+
+---
 
 ### 2026-11-06 — Phase 6: the provision, and an answer key with nothing behind its defaults
 

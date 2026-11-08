@@ -301,6 +301,58 @@ validation:
   # this phase's actual work, not merely loosened. See methodology §7.3.
   max_ecl_relative_error: 0.15
 
+  # --- Vintage MI (Phase 7) --------------------------------------------------
+  # These gates check for FALSE POSITIVES, which is the opposite direction from
+  # every earlier phase.
+  #
+  # Segment and origination month are drawn INDEPENDENTLY in the generator, so
+  # the true vintage effect on this book is exactly zero. The engine must
+  # therefore find nothing — and an MI pack that invents a trend costs a credit
+  # committee a policy change it did not need, which is a more expensive error
+  # than a provision a few percent out.
+  #
+  # 0.5pp per year is the allowance for sampling noise in the fitted slope. With
+  # 48 cohorts of ~420 accounts at a ~5% twelve-month default rate, the standard
+  # error on the slope is about 0.15pp per year, so this is roughly 3 standard
+  # errors — the same convention as the LGD gate, and set the same way, from the
+  # sample size rather than from a result.
+  max_spurious_vintage_slope_per_year: 0.005
+  #
+  # Dispersion between cohorts, as observed SD over the SD binomial sampling
+  # alone would produce. 1.0 means indistinguishable from chance. 1.25 allows
+  # for the ratio's own sampling error across 48 cohorts without admitting a
+  # real effect.
+  max_vintage_dispersion_ratio: 1.25
+  #
+  # WHEN THESE GATES CAN BE APPLIED AT ALL.
+  #
+  # Vintage analysis divides the book by origination month, so the COHORT is
+  # the sample, not the book. On the 400-account sample that is 8 accounts per
+  # cohort and 0.4 expected defaults in each — a regime where neither statistic
+  # above means anything.
+  #
+  # Two conditions, because the two kinds of gate fail for different reasons,
+  # and both are standard tests decided from the sample rather than from the
+  # result:
+  #
+  #   TREND gates (the fitted slope). Applied only when the standard error of
+  #   the slope is at most half the tolerance — the same "twice as precise as
+  #   the limit it is held to" rule as the LGD gate. Measured: 0.135pp/yr on
+  #   the full book, 0.92pp/yr on the sample against a 0.5pp/yr limit. On the
+  #   sample the fitted slope came out -1.56pp/yr, which is 1.7 standard errors
+  #   from zero and no evidence of anything, yet it would have failed a gate
+  #   designed to catch invented trends.
+  #
+  #   DISPERSION gates (chi-square and the variance ratio). Applied only when
+  #   the expected number of defaults per cohort is at least 5 — the textbook
+  #   validity condition for a chi-square, and not a threshold invented here.
+  #   Measured: 21.5 on the full book, 0.40 on the sample.
+  #
+  # Below either condition the gate reports "not assessed", which is a
+  # different statement from "failed". Added 8 Nov 2026. See methodology §8.6.
+  max_vintage_slope_se_fraction_of_limit: 0.5
+  min_expected_defaults_per_cohort: 5.0
+
   # Under-provisioning is the dangerous direction for a loss allowance, so the
   # engine reports the SIGN of its error prominently rather than only the
   # magnitude. Not a gate: a bias inherited from a PD estimate that passed its

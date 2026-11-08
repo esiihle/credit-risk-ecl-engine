@@ -33,6 +33,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 TESTS_DIR = REPO_ROOT / "tests"
 README = REPO_ROOT / "README.md"
+CHARTS = REPO_ROOT / "docs" / "charts"
+CHART_SCRIPT = REPO_ROOT / "scripts" / "make_charts.py"
 ROADMAP = REPO_ROOT / "docs" / "ROADMAP.md"
 
 
@@ -154,3 +156,52 @@ def _phases_marked_done(text):
         if number and "done" in cells[-1].lower():
             done.add(int(number.group(1)))
     return done
+
+
+# --- Charts obey the same rule as numbers ----------------------------------
+#
+# "No figure appears in a document unless a command regenerates it" is easy to
+# keep for numbers, which are at least visible in a diff, and easy to break for
+# images, which keep showing yesterday's data indefinitely while nothing
+# complains. These two tests are the enforceable half of the rule.
+
+def test_every_image_a_document_references_actually_exists():
+    """A broken image is invisible in a local editor and obvious on GitHub.
+
+    Checked across the documents rather than just the README, because the
+    methodology is the one most likely to grow figures and least likely to be
+    previewed before committing.
+    """
+    missing = []
+    for document in [README] + sorted((REPO_ROOT / "docs").glob("*.md")):
+        text = document.read_text(encoding="utf-8")
+        for target in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", text):
+            if target.startswith(("http://", "https://")):
+                continue
+            # README links are repo-relative; docs/ links resolve from docs/.
+            candidates = [REPO_ROOT / target, document.parent / target]
+            if not any(path.exists() for path in candidates):
+                missing.append(f"{document.name} -> {target}")
+    assert not missing, f"referenced images do not exist: {missing}"
+
+
+def test_every_committed_chart_is_one_the_chart_script_produces():
+    """Nothing hand-made may sit in docs/charts/.
+
+    An image exported by hand looks identical to a generated one and cannot be
+    refreshed by rerunning anything, so it is exactly the figure that goes
+    stale. Matching the directory's contents against the filenames the script
+    writes keeps the directory honest without running matplotlib in CI.
+    """
+    if not CHARTS.exists():
+        pytest.skip("no charts generated in this working copy")
+
+    source = CHART_SCRIPT.read_text(encoding="utf-8")
+    produced = set(re.findall(r'output\s*/\s*"([^"]+\.png)"', source))
+    assert produced, "the chart script no longer names any output files"
+
+    committed = {path.name for path in CHARTS.glob("*.png")}
+    orphans = committed - produced
+    assert not orphans, (
+        f"{sorted(orphans)} are in docs/charts/ but scripts/make_charts.py "
+        f"does not produce them — a chart nothing regenerates will go stale")
