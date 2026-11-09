@@ -53,7 +53,7 @@ this project.
 
 Every table and report in the engine states that the book is synthetic.
 
-## Current state: Phase 7 complete
+## Current state: Phase 8 in progress
 
 Seven phases are built and tested: the book and its answer key, the warehouse
 and CI, a data mart, roll rates, IFRS 9 staging, a **PD term structure that is
@@ -67,7 +67,7 @@ newest layer is 48 monthly vintage cohorts with the portfolio MI to read them,
 which catches the usual way of reading a vintage table inventing 4pp a year of
 credit improvement on a book that has none.
 
-**137 tests pass.**
+**157 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -75,7 +75,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 137 tests
+pytest                                   # 157 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -97,7 +97,7 @@ generating anything first.
 | **5** | LGD from resolved workouts, EAD by amortisation | **done** |
 | **6** | ECL calculation and discounting at the EIR | **done** |
 | **7** | Vintage curves, portfolio MI and charts | **done** |
-| 8 | SAS `PROC SQL` implementation and reconciliation | next |
+| 8 | SAS `PROC SQL` implementation and reconciliation | **in progress** |
 | 9 | Documentation and study guide | |
 
 Phase 4 is where this project joins the scorecard: that one produces a PD, this
@@ -231,15 +231,44 @@ choose between them.
 
 ## Two implementations, reconciled
 
-Phase 8 reimplements the engine in SAS `PROC SQL`, which is what South African
-bank credit risk teams actually run, and reconciles it against the DuckDB
-reference account by account, to a tolerance set in `config.yaml` before either
-side was built.
+The engine is being rewritten in SAS `PROC SQL`, which is what South African
+bank credit risk teams actually run, and reconciled against the DuckDB
+reference row by row, to a tolerance set in `config.yaml` before either side
+was built. This is champion and challenger reconciliation, which is what a
+model validation function does, and it is the only way to show that the SAS
+code is correct rather than assert it.
 
-This is not a workaround for not having a SAS licence during development. It is
-champion and challenger reconciliation, which is what a model validation
-function does, and it is the only way to show that the SAS code is correct
-rather than assert it.
+The SAS engine reads only the three source CSVs. It gets no intermediate
+table, no roll rate, no PD curve and none of the answer key, so when the two
+agree they agree because they both got the same answer rather than because
+they shared the working.
+
+**The port is not a translation.** `PROC SQL` has no window functions and no
+recursive CTEs, so four constructs had to be reimplemented:
+
+| DuckDB | what SAS needs instead |
+|---|---|
+| `LAG(is_default) OVER (...)` | left self-join onto month t-1 |
+| `LEAD(arrears_bucket) OVER (...)` | inner self-join onto month t+1 |
+| `MAX(...) OVER (ROWS BETWEEN n PRECEDING ...)` | range self-join and `GROUP BY` |
+| `WITH RECURSIVE` | a `%macro` loop appending one horizon at a time |
+
+Each one was validated against the DuckDB version *before* any SAS was
+written, by running the same shape as plain SQL where it could actually be
+executed. The iterative walk reproduces the recursive CTE with a worst gap of
+**0.0** and probability mass conserved to 2.2e-15; the three self-joins give
+zero mismatches across 506,213 account months. That ordering means the SAS run
+carries syntax risk only, not logic risk, which matters a great deal when the
+code cannot be executed on the machine it was written on.
+
+**Testing code I cannot run.** There is no SAS on the development machine, so
+the usual guarantee that the tests cover the code does not hold for
+`sas/*.sas`. Rather than pretend otherwise, the coverage is split: the
+algorithms are validated in DuckDB as above, and every SAS program is linted
+for constructs `PROC SQL` does not support. The lint cannot prove the code
+runs. It catches the specific failure that was most likely while writing it,
+which is reaching for a DuckDB construct out of habit. Methodology §9.4 is
+honest about what that leaves untested.
 
 ## Repository structure
 
@@ -248,8 +277,10 @@ config.yaml     every threshold and accounting policy choice, in one readable pl
 src/            config, generate (the book and its answer key), db (DuckDB harness),
                 mart, rollrate, staging, pd, lgd, ecl, vintage: one module per phase
 sql/            the engine's logic as SQL, readable and reviewable and portable
+sas/            the same engine in SAS PROC SQL, plus the generated config
 scripts/        generate_book.py · run_pipeline.py · make_charts.py
-tests/          137 tests; the answer key is checked against the simulation,
+                export_for_sas.py · reconcile_sas.py
+tests/          157 tests; the answer key is checked against the simulation,
                 every mart quality check is shown to fail when it should, and
                 the known biases are asserted to still be there
 docs/           OVERVIEW · ROADMAP · methodology · charts

@@ -21,8 +21,8 @@ Every figure is derived from the code or the other document and compared.
 
 Run with:  pytest tests/test_docs.py -v
 """
-import ast
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -39,42 +39,36 @@ ROADMAP = REPO_ROOT / "docs" / "ROADMAP.md"
 
 
 def count_test_functions():
-    """Every `test_*` function in `tests/`, counted from the source.
+    """How many tests the suite actually has, as pytest itself counts them.
 
-    Counted by parsing rather than by running pytest in a subprocess: the count
-    has to be available without recursively invoking the suite that contains
-    this test. Exact only while no test is parametrised, which the test below
-    asserts, if a `parametrize` ever appears, the collected count diverges
-    from the function count and this measure would silently become wrong.
+    COUNTED BY COLLECTION, NOT BY PARSING, and that change has a story. The
+    first version walked the AST and counted `test_*` functions, which is
+    faster and needs no subprocess, but it equals the test count only while
+    nothing is parametrised. Its docstring said so, and said that if a
+    parametrised test ever appeared the fix was to count collected tests
+    rather than to adjust the number in the README.
+
+    Phase 8 added one: the SAS lint runs once per `.sas` file. So the fix
+    written down back then is the fix applied here, rather than the easier
+    option of unrolling the parametrize to keep the old measure working. A
+    note about what to do when a check breaks is worth nothing if the first
+    time it breaks you do something else.
+
+    `--collect-only` imports the test modules and runs nothing, so this is a
+    collection inside a collection rather than a suite inside a suite.
     """
-    total = 0
-    for path in sorted(TESTS_DIR.glob("test_*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        total += sum(
-            1 for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name.startswith("test_"))
-    return total
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q",
+         "-p", "no:cacheprovider", str(TESTS_DIR)],
+        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=600)
 
+    match = re.search(r"(\d+)\s+tests?\s+collected", result.stdout)
+    if not match:
+        raise AssertionError(
+            "could not read a collected count from pytest:\n"
+            + result.stdout[-2000:] + result.stderr[-2000:])
+    return int(match.group(1))
 
-def test_no_test_is_parametrised_so_the_count_is_exact():
-    """Guards the measure the next test depends on.
-
-    If this ever fails, the fix is to count collected tests with
-    `pytest --collect-only` rather than to adjust the number in the README,
-    the problem would be that the function count had stopped meaning the test
-    count, not that the README was wrong.
-    """
-    # Matched as a DECORATOR, not as a word. The first version searched for
-    # the bare string and failed on this very file, which mentions parametrize
-    # twice in its own prose, a check that could not tell a use from a
-    # mention, which is this project's recurring error in miniature.
-    decorator = re.compile(r"^\s*@(?:pytest\.)?mark\.parametrize", re.M)
-    offenders = [p.name for p in TESTS_DIR.glob("test_*.py")
-                 if decorator.search(p.read_text(encoding="utf-8"))]
-    assert not offenders, (
-        f"{offenders} use parametrize, so counting functions no longer gives "
-        f"the collected test count, see this test's docstring")
 
 
 def test_the_readme_test_count_matches_the_actual_number_of_tests():

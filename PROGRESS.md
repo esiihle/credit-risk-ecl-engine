@@ -4,12 +4,13 @@
 > session. Read this plus `docs/ROADMAP.md` and you know exactly where the
 > project stands. Newest entry at the top.
 
-**Current phase:** Phase 7 complete. Next: Phase 8, the SAS implementation
-and the reconciliation harness.
+**Current phase:** Phase 8 in progress. The SAS port runs as far as
+`account_pd` and the reconciliation harness is built; LGD, EAD and ECL are
+still DuckDB only.
 **Overall status:** 🟢 Mart, roll rates, staging, a PD term structure 9x more
 accurate per account than a pooled curve, LGD from resolved workouts, exposure
 exact to the cent, **per account ECL reconciling to the answer key at
-1.8e-11**, and 48 vintage cohorts with the MI to read them. **137 tests
+1.8e-11**, and 48 vintage cohorts with the MI to read them. **157 tests
 green.**
 **Cadence:** one commit per working day.
 
@@ -24,7 +25,7 @@ green.**
 - [x] Phase 5: LGD and EAD
 - [x] Phase 6: ECL calculation
 - [x] Phase 7: Vintage and portfolio MI
-- [ ] Phase 8: SAS implementation and reconciliation
+- [~] Phase 8: SAS implementation and reconciliation (through account_pd)
 - [ ] Phase 9: Documentation and study guide
 
 ## Open decisions
@@ -40,7 +41,7 @@ green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 137 tests
+pytest                                    # 157 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -51,6 +52,100 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-11-08, Phase 8: the SAS port, and testing code I cannot run
+
+The engine, written a second time in SAS `PROC SQL`, reading only the three
+source CSVs and reconciled against the DuckDB reference row by row. Two
+implementations agreeing is how a bank shows a model is right when there is no
+answer key, and here it is the only way to show the SAS is correct rather than
+assert it.
+
+#### The port is not a translation
+`PROC SQL` has no window functions and no recursive CTEs. Four constructs had
+to be reimplemented:
+
+| DuckDB | SAS instead | file |
+|---|---|---|
+| `LAG(is_default) OVER (...)` | left self-join onto month t-1 | `02_mart.sas` |
+| `LEAD(arrears_bucket) OVER (...)` | inner self-join onto month t+1 | `03_roll_rates.sas` |
+| `MAX(...) OVER (ROWS BETWEEN n PRECEDING ...)` | range self-join + `GROUP BY` | `05_staging.sas` |
+| `WITH RECURSIVE` | `%macro` loop, one horizon at a time | `04`, `06` |
+
+**Every one was validated in DuckDB before a line of SAS was written:**
+
+| construct | result |
+|---|---|
+| LAG as a self-join | 0 mismatches across 506,213 account months |
+| LEAD as a self-join | identical row count, 0 disagreeing transitions |
+| probation as a range self-join | 0 mismatches |
+| iterative walk vs recursive CTE | worst gap **0.0**, mass to 2.2e-15 |
+
+So the SAS run carries syntax risk only, not logic risk. That ordering is the
+whole reason this was worth doing before touching SAS.
+
+Three things worth remembering:
+- **SAS has a `LAG()` function and it is the wrong tool.** It is a DATA step
+  queue returning the previous row PROCESSED, not the previous row of the same
+  account, so it would carry one account's last month into the next account's
+  first. The self-join cannot do that.
+- **The probation join is on `months_on_book`, not row order.** "Three rows
+  back" equals "three months back" only because the grain is dense, and the
+  mart checks are what keep it dense.
+- **The DECIMAL truncation trap from Phase 3 does not exist in SAS**, because
+  every SAS numeric is an 8-byte float. The absorbing-row trap does exist in
+  both, and missing-value propagation is worse in SAS, so every matrix cell is
+  wrapped in `COALESCE`.
+
+#### Accounting policy in one place
+`scripts/export_for_sas.py` generates `sas/00_config.sas` from `config.yaml`,
+so no threshold is retyped. Two copies of the accounting policy would be equal
+the day they were written and silently unequal afterwards. A test asserts the
+generated file still matches config, and that no SAS program hard-codes a
+threshold that belongs in a macro variable.
+
+#### Testing code that cannot be run
+No SAS on this machine, so the usual guarantee that tests cover the code does
+not hold for `sas/*.sas`. Rather than pretend otherwise the coverage is split:
+algorithms validated in DuckDB as above, and every SAS program linted for
+constructs `PROC SQL` lacks (`OVER (`, `WITH RECURSIVE`, CTEs, `FILTER`, `::`,
+`generate_series`, `NULLIF`, `GREATEST`, `LEAST`, boolean literals).
+
+The lint strips comments first, because the SAS files explain at length which
+constructs SAS lacks and would otherwise fail on their own documentation. Same
+mistake as a check matching a threshold's name instead of its value, which
+this project already made once in Phase 6.
+`test_the_lint_would_catch_a_real_violation` feeds it a broken program,
+because a lint that has never fired is indistinguishable from a broken one.
+
+#### The harness refuses to call an empty comparison a pass
+Four tables are reconciled, not just the last one, so a disagreement has
+somewhere to be localised and two cancelling errors cannot read as a pass. A
+row breaches only if it exceeds **both** the absolute and relative tolerance,
+since two languages doing floating point will not agree bit for bit. Rows
+present on one side only are counted separately from rows whose values differ,
+because those are different defects debugged in different places. And if none
+of the SAS exports are present the script exits 1: a reconciliation that
+silently compares nothing looks exactly like one that worked.
+
+#### A note I left myself, and then followed
+`test_no_test_is_parametrised_so_the_count_is_exact` existed because the README
+test count was counted by parsing the AST, which is only right while nothing is
+parametrised. Its docstring said that if a parametrised test ever appeared, the
+fix was to count collected tests rather than adjust the README.
+
+Phase 8's SAS lint runs once per file, so it appeared. I applied the fix that
+was written down rather than unrolling the parametrize to keep the old measure
+alive. A note about what to do when a check breaks is worth nothing if the
+first time it breaks you do something else.
+
+#### Next
+Finish the port: LGD, the exposure schedule and the ECL calculation itself.
+Stopping at `account_pd` is deliberate, because it is the first point at which
+every construct SAS lacks has been exercised, and it is worth finding out what
+the first real SAS run teaches before writing another four hundred lines blind.
+
+---
 
 ### 2026-11-08, Phase 7: vintage curves, and MI that invents a trend
 

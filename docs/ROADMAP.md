@@ -13,7 +13,7 @@ that pin its behaviour, and a methodology section explaining the reasoning.
 | **5** | **LGD from resolved workouts only, EAD by amortisation** | **done, 5 Nov 2026** |
 | **6** | **ECL by IFRS 9 stage, discounted at the effective interest rate** | **done, 6 Nov 2026** |
 | **7** | **Vintage curves, portfolio MI, and the first charts** | **done, 8 Nov 2026** |
-| 8 | SAS `PROC SQL` implementation and the reconciliation harness | next |
+| 8 | SAS `PROC SQL` implementation and the reconciliation harness | **in progress** |
 | 9 | README, methodology, study guide | |
 
 ## The through-line

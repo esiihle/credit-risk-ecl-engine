@@ -1496,3 +1496,166 @@ the statistic it is built from.
   mature and leave. Cross cohort comparison stays valid here because term mix
   is drawn independently of origination month, but on a real book where it is
   not, the honest tool is a survival model with term as a covariate.
+
+---
+
+## 9. The SAS port and the reconciliation harness  *(built 8 Nov 2026)*
+
+The same engine, written twice, in two languages, against two different
+database engines, and reconciled row by row.
+
+### 9.1 Why bother writing it twice
+
+A single engine can only be checked against the answer key, and the answer key
+only exists because this book is simulated. On a real portfolio there is no
+key, and "is this provision right" has to be answered some other way.
+
+Two independent implementations agreeing is that other way. It is what a bank's
+model validation function actually does before a model goes into production,
+and it is the only way to show that SAS code is correct rather than assert it.
+SAS `PROC SQL` is also what South African bank credit risk teams run, so the
+port is not an academic exercise.
+
+What makes the two independent: the SAS engine reads only the three source
+CSVs, which are `accounts`, `loan_month` and `recovery`. It is handed no
+intermediate table, no roll rate, no PD curve, and none of the answer key.
+`scripts/export_for_sas.py` lists the exportable columns explicitly rather than
+excluding the answer key by pattern, so a new `true_*` column added to the
+generator cannot leak across by default. When the two engines agree, they agree
+because they both got the same answer, not because they shared the working.
+
+### 9.2 The port is not a translation
+
+`PROC SQL` has no window functions and no recursive CTEs. Four constructs this
+project uses throughout therefore had to be reimplemented rather than
+transcribed:
+
+| DuckDB | what SAS needs instead | where |
+|---|---|---|
+| `LAG(is_default) OVER (...)` | left self-join onto month t-1 | `02_mart.sas` |
+| `LEAD(arrears_bucket) OVER (...)` | inner self-join onto month t+1 | `03_roll_rates.sas` |
+| `MAX(...) OVER (ROWS BETWEEN n PRECEDING ...)` | range self-join and `GROUP BY` | `05_staging.sas` |
+| `WITH RECURSIVE` | a `%macro` loop appending one horizon at a time | `04`, `06` |
+
+Each replacement was validated against the DuckDB version before any SAS was
+written, by running the same shape as plain SQL where it could actually be
+executed:
+
+| construct | result |
+|---|---|
+| LAG as a self-join | 0 mismatches across 506,213 account months |
+| LEAD as a self-join | identical row count, 0 disagreeing transitions |
+| probation as a range self-join | 0 mismatches |
+| iterative walk vs recursive CTE | worst gap **0.0**, probability mass to 2.2e-15 |
+
+That ordering matters. It means the SAS run carries syntax risk only, not logic
+risk, which is worth a great deal when the code cannot be executed on the
+machine it was written on.
+
+Three details worth recording:
+
+- **SAS has a `LAG()` function and it is the wrong tool.** It is a DATA step
+  queue that returns the previous row PROCESSED, not the previous row of the
+  same account, so it would carry the last month of one account into the first
+  month of the next. The self-join has no such failure mode, which is why the
+  port does not reach for the function that shares the name.
+- **The probation join is on `months_on_book`, not on row order.** "Three rows
+  back" and "three months back" coincide only because the grain is dense, and
+  the mart quality checks are what keep it dense. A version that sorted and
+  counted rows would be right today and silently wrong the first time an
+  account had a missing month.
+- **The DECIMAL truncation trap from §4.1 does not exist in SAS.** Every SAS
+  numeric is an 8-byte float, so `1.0` cannot quietly become `DECIMAL(2,1)` and
+  freeze the state vector. The `::DOUBLE` casts the DuckDB version needs have
+  no SAS equivalent and none is required. The absorbing-row trap is real in
+  both, and missing-value propagation is worse in SAS, so every matrix cell is
+  wrapped in `COALESCE`.
+
+### 9.3 Accounting policy lives in one place
+
+Every threshold the SAS engine uses comes from `sas/00_config.sas`, which
+`scripts/export_for_sas.py` generates from `config.yaml`. Nothing is retyped.
+
+Retyping would have meant two copies of the accounting policy, equal on the day
+they were written and silently unequal afterwards, which is the same failure as
+a number in a document that no command regenerates. A test asserts that the
+generated file still matches `config.yaml` and that no SAS program hard-codes a
+threshold that belongs in a macro variable.
+
+### 9.4 Testing code that cannot be run
+
+The honest problem with this phase: there is no SAS on the machine the engine
+was developed on, so the usual guarantee that the tests cover the code does not
+hold for `sas/*.sas`. Pretending otherwise would be worse than admitting it, so
+the coverage is split into the two things that can be checked without SAS.
+
+**The algorithms**, as above, by running each replacement in DuckDB and
+requiring it to reproduce the reference.
+
+**The syntax, by exclusion.** `tests/test_sasport.py` lints every SAS program
+for constructs `PROC SQL` does not support: `OVER (`, `WITH RECURSIVE`, CTEs,
+`FILTER (WHERE`, `::`, `generate_series`, `QUALIFY`, `NULLIF`, `GREATEST`,
+`LEAST`, `STDDEV_SAMP`, and boolean literals. This cannot prove the code runs.
+It catches the specific failure that was most likely while writing it, which is
+reaching for a DuckDB construct out of habit.
+
+The lint strips comments first. The SAS files explain at length which
+constructs SAS lacks, and a lint that matched its own documentation would fail
+on correct code, which is the same mistake as a check matching a threshold's
+name instead of its value. This project made that one once already, in §7.6.
+
+`test_the_lint_would_catch_a_real_violation` feeds it a deliberately broken
+program, because a lint that has never fired is indistinguishable from a broken
+one.
+
+What remains untested is genuine SAS semantics, and the honest statement is
+that the first run on real SAS is the test for those. Every program prints its
+row counts to the log through a `%say` macro, and `options errorabend` stops at
+the first error rather than running on and producing a partial result that
+looks complete, so that first run localises a failure immediately.
+
+### 9.5 What the harness compares, and what it refuses to call a pass
+
+`src/reconcile.py` compares four tables rather than only the final one:
+
+| table | what it proves |
+|---|---|
+| `roll_rate` | the LEAD replacement, and the censoring rule with it |
+| `pd_curve` | the recursive walk rebuilt as a macro loop |
+| `segment_age_matrix` | the thin-cell fallback and the segment-pooled rate |
+| `account_pd` | per account PD and stage, the end of the ported chain |
+
+Comparing only the final answer would leave a disagreement with nowhere to be
+localised, and would let two errors that happened to cancel read as a pass.
+
+Three deliberate choices in the comparison:
+
+- **A row breaches only if it exceeds both the absolute and the relative
+  tolerance.** Two languages doing floating point will not agree bit for bit,
+  and a reconciliation that fires on the last decimal place is one nobody
+  reads. A cent on a million is not a disagreement.
+- **Rows present on one side only are counted separately from rows whose
+  values differ.** They are different defects: a missing row usually means a
+  join or a filter diverged, a differing value usually means arithmetic did,
+  and collapsing them into one count sends you looking in the wrong place.
+- **An empty comparison is a failure, not a pass.** If none of the SAS exports
+  are present, the script says so and exits 1. A reconciliation that silently
+  compares nothing looks exactly like one that worked, which is the worst
+  available outcome and the sixth form of the error this project keeps
+  finding.
+
+`test_the_harness_detects_a_planted_discrepancy` tampers with one value and
+requires the harness to catch it, because the harness is the thing that will
+eventually say "the port is correct" and it has to be shown capable of saying
+the opposite.
+
+### 9.6 What is not ported yet
+
+The chain stops at `account_pd`. LGD, the exposure schedule and the ECL
+calculation itself are still DuckDB only, so the reconciliation covers the
+estimation half of the engine and not the provision.
+
+That is a real gap and it is stated rather than glossed. The reason for
+stopping here is that `account_pd` is the first point at which every construct
+SAS lacks has been exercised, so it is the right place to find out what the
+first real SAS run teaches before writing another four hundred lines blind.

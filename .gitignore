@@ -53,3 +53,16 @@ data/processed/*.duckdb.wal
 *.sas7bdat
 *.log
 *.lst
+
+# The CSV bridge to SAS. Both directions are generated, not authored:
+# sas/data/ is written by scripts/export_for_sas.py and is ~21 MB, and
+# sas/results/ holds whatever the SAS run produced and is downloaded back.
+#
+# sas/*.sas IS committed, including the generated 00_config.sas, because the
+# SAS side has to be readable without running anything. Note the shape of
+# these rules: they name the two data folders, not `sas/*`, which would
+# swallow the programs themselves. That is the mistake made once already with
+# `data/*` on the scorecard project, where a clean clone crashed.
+sas/data/*.csv
+sas/results/*.csv
+!sas/results/.gitkeep
