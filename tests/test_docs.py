@@ -36,6 +36,8 @@ README = REPO_ROOT / "README.md"
 CHARTS = REPO_ROOT / "docs" / "charts"
 CHART_SCRIPT = REPO_ROOT / "scripts" / "make_charts.py"
 ROADMAP = REPO_ROOT / "docs" / "ROADMAP.md"
+METHODOLOGY = REPO_ROOT / "docs" / "methodology.md"
+STUDY_GUIDE = REPO_ROOT / "docs" / "STUDY_GUIDE.md"
 
 
 def count_test_functions():
@@ -199,3 +201,99 @@ def test_every_committed_chart_is_one_the_chart_script_produces():
     assert not orphans, (
         f"{sorted(orphans)} are in docs/charts/ but scripts/make_charts.py "
         f"does not produce them, a chart nothing regenerates will go stale")
+
+
+# --- The study guide ---------------------------------------------------------
+#
+# This one is quoted out loud in an interview, which makes a stale figure in it
+# more expensive than a stale figure anywhere else in the repository. It is
+# also pure prose, so nothing regenerates it and nothing would notice.
+
+# Figures the guide leads with. Each must still appear in the methodology,
+# which is written from the engine's own output as each phase lands.
+HEADLINE_FIGURES = [
+    "4.27%",        # portfolio coverage
+    "65.10%",       # LGD from resolved workouts
+    "68.63%",       # LGD, the naive estimate
+    "1.8e-11",      # the ECL arithmetic residual
+    "0.0039",       # age-aware PD mean absolute error
+    "0.0359",       # pooled PD mean absolute error
+    "97.8%",        # share of the vintage trend that is artefact
+    "1.633",        # the staging cliff for accounts in no arrears
+    "23,737",       # account-months staged by the 30-day backstop
+    "1,132",        # and by the relative PD test
+    "2.25%",        # how far the engine under-provisions
+    "4.29pp",       # smallest effect monthly cohorts could detect
+]
+
+
+def test_every_headline_figure_also_appears_in_the_methodology():
+    """The guide may not introduce a number the engine has not produced.
+
+    Checked against the methodology rather than against the warehouse, because
+    the methodology is written from the engine's output as each phase lands and
+    is already covered by the phase tests. This makes the guide a view onto
+    those numbers rather than a second, unverified copy of them.
+    """
+    guide = STUDY_GUIDE.read_text(encoding="utf-8")
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+
+    missing_from_guide = [f for f in HEADLINE_FIGURES if f not in guide]
+    assert not missing_from_guide, (
+        f"the guide no longer quotes {missing_from_guide}; either it was "
+        f"rewritten or this list is stale")
+
+    unsupported = [f for f in HEADLINE_FIGURES if f not in methodology]
+    assert not unsupported, (
+        f"{unsupported} appear in the study guide but not in the methodology, "
+        f"so nothing regenerates them")
+
+
+def test_the_study_guide_test_count_is_current():
+    """It tells me to know the test count cold, so it had better be right."""
+    guide = STUDY_GUIDE.read_text(encoding="utf-8")
+    claimed = set(int(n) for n in re.findall(r"\|\s*tests\s*\|\s*(\d+)\s*\|", guide))
+    claimed |= set(int(n) for n in re.findall(r"(\d+)\s+tests\b", guide))
+    assert claimed, "the guide no longer states a test count"
+    assert claimed == {count_test_functions()}, (
+        f"guide claims {sorted(claimed)} tests, the suite has "
+        f"{count_test_functions()}")
+
+
+def test_the_drill_sheet_is_all_questions():
+    """A drill that has drifted into statements has stopped being a drill.
+
+    Cheap, and it caught two numbered items that had turned into notes while
+    the section was being written.
+    """
+    guide = STUDY_GUIDE.read_text(encoding="utf-8")
+    section = guide[guide.index("## 8. Drill sheet"):]
+    section = section[:section.index("## 9.")]
+
+    # Wrapped lines are joined first. The first version matched one line at a
+    # time, so a question that wrapped looked like a statement and a two
+    # sentence drill item ("... ? Give one from this project.") did too. It
+    # failed on three correct items, which is this project's recurring error
+    # again: a check that could not tell a wrapped question from a statement.
+    joined, items = [], []
+    for line in section.split("\n"):
+        if re.match(r"^\s*\d+\.\s+", line):
+            joined.append(line.strip())
+        elif joined and line.strip() and not line.startswith("#"):
+            joined[-1] += " " + line.strip()
+    items = [re.sub(r"^\d+\.\s*", "", q) for q in joined]
+
+    assert len(items) >= 20, f"only {len(items)} drill questions"
+
+    # A drill item has to ASK something. It may run to a second sentence after
+    # the question mark, which is why this looks for one anywhere rather than
+    # only at the end.
+    statements = [q for q in items if "?" not in q]
+    assert not statements, f"these are not questions: {statements}"
+
+
+def test_the_study_guide_is_linked_from_the_readme():
+    """A document nothing points at is a document nobody opens."""
+    readme = README.read_text(encoding="utf-8")
+    assert "STUDY_GUIDE" in readme, (
+        "the study guide is not referenced anywhere in the README")

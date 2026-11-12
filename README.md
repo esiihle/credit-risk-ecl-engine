@@ -67,7 +67,7 @@ newest layer is 48 monthly vintage cohorts with the portfolio MI to read them,
 which catches the usual way of reading a vintage table inventing 4pp a year of
 credit improvement on a book that has none.
 
-**157 tests pass.**
+**161 tests pass.**
 
 ```bash
 git clone https://github.com/esiihle/credit-risk-ecl-engine.git
@@ -75,7 +75,7 @@ cd credit-risk-ecl-engine
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pytest                                   # 157 tests
+pytest                                   # 161 tests
 python scripts/run_pipeline.py --sample  # runs on the committed sample book
 python scripts/run_pipeline.py --status  # the build plan
 python scripts/generate_book.py          # build the full book (~12s)
@@ -98,7 +98,7 @@ generating anything first.
 | **6** | ECL calculation and discounting at the EIR | **done** |
 | **7** | Vintage curves, portfolio MI and charts | **done** |
 | 8 | SAS `PROC SQL` implementation and reconciliation | **in progress** |
-| 9 | Documentation and study guide | |
+| 9 | Documentation and study guide | **study guide written** |
 
 Phase 4 is where this project joins the scorecard: that one produces a PD, this
 one consumes a PD to produce a balance sheet provision.
@@ -280,13 +280,22 @@ sql/            the engine's logic as SQL, readable and reviewable and portable
 sas/            the same engine in SAS PROC SQL, plus the generated config
 scripts/        generate_book.py · run_pipeline.py · make_charts.py
                 export_for_sas.py · reconcile_sas.py
-tests/          157 tests; the answer key is checked against the simulation,
+tests/          161 tests; the answer key is checked against the simulation,
                 every mart quality check is shown to fail when it should, and
                 the known biases are asserted to still be there
-docs/           OVERVIEW · ROADMAP · methodology · charts
+docs/           OVERVIEW · ROADMAP · methodology · STUDY_GUIDE · charts
 data/sample/    a small committed book so a clone runs out of the box
 .github/        CI: the suite plus a pipeline run, on Python 3.11 and 3.12
 ```
+
+## Presenting it
+
+[`docs/STUDY_GUIDE.md`](docs/STUDY_GUIDE.md) is how I prepare to talk about
+this project: the opening, the figures worth knowing cold, each finding written
+as the answer to the question a panel actually asks, the weaknesses stated
+before anyone has to find them, and a drill sheet of twenty five questions to
+answer out loud. Public because there is nothing in it I would not say in the
+room.
 
 ## How this project handles numbers
 

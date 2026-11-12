@@ -4,13 +4,13 @@
 > session. Read this plus `docs/ROADMAP.md` and you know exactly where the
 > project stands. Newest entry at the top.
 
-**Current phase:** Phase 8 in progress. The SAS port runs as far as
+**Current phase:** Phase 8 in progress, Phase 9's study guide written. The SAS port runs as far as
 `account_pd` and the reconciliation harness is built; LGD, EAD and ECL are
 still DuckDB only.
 **Overall status:** 🟢 Mart, roll rates, staging, a PD term structure 9x more
 accurate per account than a pooled curve, LGD from resolved workouts, exposure
 exact to the cent, **per account ECL reconciling to the answer key at
-1.8e-11**, and 48 vintage cohorts with the MI to read them. **157 tests
+1.8e-11**, and 48 vintage cohorts with the MI to read them. **161 tests
 green.**
 **Cadence:** one commit per working day.
 
@@ -41,7 +41,7 @@ green.**
 ## How to run
 ```bash
 pip install -r requirements.txt
-pytest                                    # 157 tests
+pytest                                    # 161 tests
 python scripts/run_pipeline.py --sample   # the committed sample book
 python scripts/run_pipeline.py --status   # the build plan
 python scripts/generate_book.py           # full book, ~12s
@@ -52,6 +52,57 @@ python scripts/generate_book.py --summary # describe the warehouse
 ---
 
 ## Session log
+
+### 2026-11-12, Phase 9: the study guide
+
+`docs/STUDY_GUIDE.md`, written to prepare for talking about this project to a
+panel. Public because there is nothing in it I would not say in the room.
+
+Nine sections: the sixty second opening, the figures worth knowing cold, the
+engine in nine lines, each finding written as the answer to the question a
+panel actually asks with the follow up underneath it, the recurring error
+thread, the hard questions including the ones I would rather raise myself, the
+traps to avoid in the room, a drill sheet of twenty five questions, and a one
+page refresher.
+
+The design choice that matters: each finding is written as an ANSWER, not as a
+description. "How do you compute a roll rate" with a thirty second reply and
+the follow up a panel will actually ask, rather than a paragraph about roll
+rates. A description has to be converted into an answer under pressure, and
+that conversion is exactly what goes wrong in an interview.
+
+#### Keeping it from going stale
+A study guide quoted out loud is the most expensive place in the repository for
+a wrong number, and it is pure prose, so nothing regenerates it and nothing
+would notice. Four tests now cover it:
+
+- every headline figure it leads with must also appear in `methodology.md`,
+  which is written from the engine's output as each phase lands. The guide is
+  a view onto numbers the phase tests already cover, not a second unverified
+  copy of them.
+- its test count must match the suite.
+- the drill sheet must be all questions.
+- the README must link it, because a document nothing points at is a document
+  nobody opens.
+
+I also checked all ten headline figures against a live warehouse by hand before
+committing, not just against the methodology.
+
+#### The drill check could not tell a wrapped question from a statement
+It matched one line at a time, so any drill item that wrapped looked like a
+statement, and so did a two sentence item whose question mark was not at the
+end. It failed on three correct items.
+
+Seventh instance of the thread, in a test I wrote in the same session as the
+table that lists the other six. Fixed by joining wrapped lines first and
+looking for a question mark anywhere in the item rather than only at the end.
+
+#### Next
+Finish the SAS port: LGD, exposure and the ECL calculation. Still waiting on a
+first real SAS run to find out what the syntax actually does before writing
+another four hundred lines blind.
+
+---
 
 ### 2026-11-08, Phase 8: the SAS port, and testing code I cannot run
 

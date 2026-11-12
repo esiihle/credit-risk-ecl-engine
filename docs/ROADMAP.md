@@ -14,7 +14,7 @@ that pin its behaviour, and a methodology section explaining the reasoning.
 | **6** | **ECL by IFRS 9 stage, discounted at the effective interest rate** | **done, 6 Nov 2026** |
 | **7** | **Vintage curves, portfolio MI, and the first charts** | **done, 8 Nov 2026** |
 | 8 | SAS `PROC SQL` implementation and the reconciliation harness | **in progress** |
-| 9 | README, methodology, study guide | |
+| 9 | README, methodology, study guide | **study guide written, 12 Nov 2026** |
 
 ## The through-line
 
